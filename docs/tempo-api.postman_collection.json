@@ -1,0 +1,346 @@
+{
+  "info": {
+    "name": "Tempo API",
+    "description": "Realtime workspace booking system. Set the environment variables base_url, access_token and admin_token. The Login requests populate access_token / admin_token automatically via test scripts.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8080" },
+    { "key": "access_token", "value": "" },
+    { "key": "refresh_token", "value": "" },
+    { "key": "admin_token", "value": "" },
+    { "key": "spaceId", "value": "" },
+    { "key": "resourceId", "value": "" },
+    { "key": "bookingId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/auth/register", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "register"] },
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"member@tempo.africa\",\n  \"password\": \"Pa55word!\",\n  \"firstName\": \"Ada\",\n  \"lastName\": \"Obi\"\n}" }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.data && json.data.accessToken) {",
+                  "  pm.collectionVariables.set('access_token', json.data.accessToken);",
+                  "  pm.collectionVariables.set('refresh_token', json.data.refreshToken);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login (member)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/auth/login", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "login"] },
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"member@tempo.africa\",\n  \"password\": \"Pa55word!\"\n}" }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.data && json.data.accessToken) {",
+                  "  pm.collectionVariables.set('access_token', json.data.accessToken);",
+                  "  pm.collectionVariables.set('refresh_token', json.data.refreshToken);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login (admin)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/auth/login", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "login"] },
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"admin@tempo.africa\",\n  \"password\": \"CHANGE_ME\"\n}" }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.data && json.data.accessToken) {",
+                  "  pm.collectionVariables.set('admin_token', json.data.accessToken);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Refresh",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/v1/auth/refresh", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "refresh"] },
+            "body": { "mode": "raw", "raw": "{\n  \"refreshToken\": \"{{refresh_token}}\"\n}" }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.data && json.data.accessToken) {",
+                  "  pm.collectionVariables.set('access_token', json.data.accessToken);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/api/v1/auth/logout", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "logout"] },
+            "body": { "mode": "raw", "raw": "{\n  \"refreshToken\": \"{{refresh_token}}\"\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "item": [
+        {
+          "name": "Get my profile",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": { "raw": "{{base_url}}/api/v1/users/me", "host": ["{{base_url}}"], "path": ["api", "v1", "users", "me"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Spaces",
+      "item": [
+        {
+          "name": "Create space (admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{admin_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/api/v1/spaces", "host": ["{{base_url}}"], "path": ["api", "v1", "spaces"] },
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Accra Central Hub\",\n  \"location\": \"Independence Avenue, Accra\",\n  \"description\": \"Flagship co-working space\",\n  \"openingTime\": \"08:00:00\",\n  \"closingTime\": \"20:00:00\"\n}" }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.data && json.data.id) { pm.collectionVariables.set('spaceId', json.data.id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List spaces",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": { "raw": "{{base_url}}/api/v1/spaces?page=0&size=20", "host": ["{{base_url}}"], "path": ["api", "v1", "spaces"], "query": [{ "key": "page", "value": "0" }, { "key": "size", "value": "20" }] }
+          }
+        },
+        {
+          "name": "Get space",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": { "raw": "{{base_url}}/api/v1/spaces/{{spaceId}}", "host": ["{{base_url}}"], "path": ["api", "v1", "spaces", "{{spaceId}}"] }
+          }
+        },
+        {
+          "name": "Update space (admin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{admin_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/api/v1/spaces/{{spaceId}}", "host": ["{{base_url}}"], "path": ["api", "v1", "spaces", "{{spaceId}}"] },
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Accra Central Hub\",\n  \"location\": \"Independence Avenue, Accra\",\n  \"description\": \"Updated description\",\n  \"openingTime\": \"07:00:00\",\n  \"closingTime\": \"21:00:00\"\n}" }
+          }
+        },
+        {
+          "name": "Deactivate space (admin)",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{admin_token}}" }],
+            "url": { "raw": "{{base_url}}/api/v1/spaces/{{spaceId}}", "host": ["{{base_url}}"], "path": ["api", "v1", "spaces", "{{spaceId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Resources",
+      "item": [
+        {
+          "name": "Create resource (admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{admin_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/api/v1/spaces/{{spaceId}}/resources", "host": ["{{base_url}}"], "path": ["api", "v1", "spaces", "{{spaceId}}", "resources"] },
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Meeting Room A\",\n  \"type\": \"ROOM\",\n  \"capacity\": 8\n}" }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.data && json.data.id) { pm.collectionVariables.set('resourceId', json.data.id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List resources in space",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": { "raw": "{{base_url}}/api/v1/spaces/{{spaceId}}/resources?page=0&size=20", "host": ["{{base_url}}"], "path": ["api", "v1", "spaces", "{{spaceId}}", "resources"], "query": [{ "key": "page", "value": "0" }, { "key": "size", "value": "20" }] }
+          }
+        },
+        {
+          "name": "Get resource",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": { "raw": "{{base_url}}/api/v1/resources/{{resourceId}}", "host": ["{{base_url}}"], "path": ["api", "v1", "resources", "{{resourceId}}"] }
+          }
+        },
+        {
+          "name": "Update resource (admin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{admin_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/api/v1/resources/{{resourceId}}", "host": ["{{base_url}}"], "path": ["api", "v1", "resources", "{{resourceId}}"] },
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Meeting Room A\",\n  \"type\": \"ROOM\",\n  \"capacity\": 10\n}" }
+          }
+        },
+        {
+          "name": "Deactivate resource (admin)",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{admin_token}}" }],
+            "url": { "raw": "{{base_url}}/api/v1/resources/{{resourceId}}", "host": ["{{base_url}}"], "path": ["api", "v1", "resources", "{{resourceId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Bookings",
+      "item": [
+        {
+          "name": "Create booking",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/api/v1/bookings", "host": ["{{base_url}}"], "path": ["api", "v1", "bookings"] },
+            "body": { "mode": "raw", "raw": "{\n  \"resourceId\": \"{{resourceId}}\",\n  \"startTime\": \"2026-12-01T09:00:00Z\",\n  \"endTime\": \"2026-12-01T10:00:00Z\"\n}" }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.data && json.data.id) { pm.collectionVariables.set('bookingId', json.data.id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "My bookings",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": { "raw": "{{base_url}}/api/v1/bookings/me?status=CONFIRMED&page=0&size=20", "host": ["{{base_url}}"], "path": ["api", "v1", "bookings", "me"], "query": [{ "key": "status", "value": "CONFIRMED" }, { "key": "page", "value": "0" }, { "key": "size", "value": "20" }] }
+          }
+        },
+        {
+          "name": "Get booking",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": { "raw": "{{base_url}}/api/v1/bookings/{{bookingId}}", "host": ["{{base_url}}"], "path": ["api", "v1", "bookings", "{{bookingId}}"] }
+          }
+        },
+        {
+          "name": "Cancel booking",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": { "raw": "{{base_url}}/api/v1/bookings/{{bookingId}}", "host": ["{{base_url}}"], "path": ["api", "v1", "bookings", "{{bookingId}}"] }
+          }
+        },
+        {
+          "name": "Space bookings for date (admin)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{admin_token}}" }],
+            "url": { "raw": "{{base_url}}/api/v1/spaces/{{spaceId}}/bookings?date=2026-12-01", "host": ["{{base_url}}"], "path": ["api", "v1", "spaces", "{{spaceId}}", "bookings"], "query": [{ "key": "date", "value": "2026-12-01" }] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Availability",
+      "item": [
+        {
+          "name": "Availability snapshot",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": { "raw": "{{base_url}}/api/v1/spaces/{{spaceId}}/availability?date=2026-12-01", "host": ["{{base_url}}"], "path": ["api", "v1", "spaces", "{{spaceId}}", "availability"], "query": [{ "key": "date", "value": "2026-12-01" }] }
+          }
+        }
+      ]
+    }
+  ]
+}

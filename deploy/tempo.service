@@ -1,0 +1,27 @@
+[Unit]
+Description=Tempo realtime workspace booking API
+After=network.target
+
+[Service]
+Type=simple
+User=tempo
+Group=tempo
+
+# Environment (DATABASE_URL, REDIS_URL, JWT_SECRET, etc.) is loaded from this file.
+EnvironmentFile=/etc/tempo/tempo.env
+
+ExecStart=/usr/bin/java -jar /opt/tempo/tempo.jar
+WorkingDirectory=/opt/tempo
+
+# Spring Boot exits with 143 on SIGTERM; treat that as a clean stop.
+SuccessExitStatus=143
+Restart=on-failure
+RestartSec=5
+
+# Basic hardening
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
