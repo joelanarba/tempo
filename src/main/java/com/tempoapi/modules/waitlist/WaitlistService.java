@@ -1,16 +1,20 @@
 package com.tempoapi.modules.waitlist;
 
 import com.tempoapi.common.PageResponse;
+import com.tempoapi.entity.Booking;
+import com.tempoapi.entity.BookingStatus;
 import com.tempoapi.entity.Resource;
 import com.tempoapi.entity.Space;
 import com.tempoapi.entity.User;
 import com.tempoapi.entity.WaitlistEntry;
 import com.tempoapi.entity.WaitlistStatus;
 import com.tempoapi.exception.ForbiddenException;
+import com.tempoapi.exception.OfferExpiredException;
 import com.tempoapi.exception.ResourceNotFoundException;
 import com.tempoapi.exception.SlotAvailableException;
 import com.tempoapi.exception.ValidationException;
 import com.tempoapi.modules.availability.AvailabilityCache;
+import com.tempoapi.modules.bookings.dto.BookingResponse;
 import com.tempoapi.modules.waitlist.dto.JoinWaitlistRequest;
 import com.tempoapi.modules.waitlist.dto.WaitlistEntryResponse;
 import com.tempoapi.repository.BookingRepository;
@@ -21,12 +25,18 @@ import com.tempoapi.util.TimeRangeUtil;
 import com.tempoapi.websocket.AvailabilityEventPublisher;
 import com.tempoapi.websocket.SlotChange;
 import com.tempoapi.websocket.WaitlistEventPublisher;
+import com.tempoapi.websocket.WaitlistMessage;
+import com.tempoapi.websocket.WaitlistState;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+import java.time.Instant;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -121,16 +131,145 @@ public class WaitlistService implements WaitlistPromoter {
         throw new ValidationException("Waitlist entry is not active");
     }
 
-    // ---- Filled in Task 6 ----
-
     @Override
     @Transactional
     public void promoteForReleasedSlot(SlotChange releasedSlot) {
-        // Implemented in Task 6.
+        Resource resource = resourceRepository.findByIdForUpdate(releasedSlot.resourceId())
+                .orElse(null);
+        if (resource == null) {
+            return;
+        }
+        List<WaitlistEntry> waiting = waitlistEntryRepository
+                .findByResourceIdAndStatusOrderByCreatedAtAsc(resource.getId(), WaitlistStatus.WAITING);
+        for (WaitlistEntry entry : waiting) {
+            OffsetDateTime start = TimeRangeUtil.lower(entry.getTimeRange());
+            OffsetDateTime end = TimeRangeUtil.upper(entry.getTimeRange());
+            if (!bookingRepository.findOverlapping(resource.getId(), start, end).isEmpty()) {
+                continue;
+            }
+            if (offerTo(entry, resource)) {
+                return;
+            }
+        }
+        // No eligible waiter: the slot is genuinely free.
+        LocalDate date = releasedSlot.startTime().toLocalDate();
+        publishAfterCommit(() -> {
+            availabilityCache.evict(releasedSlot.spaceId(), date);
+            availabilityEventPublisher.publishAvailable(releasedSlot);
+        });
+    }
+
+    /** Creates a HELD booking for the entry and notifies the member. Returns false if the insert raced and lost. */
+    private boolean offerTo(WaitlistEntry entry, Resource resource) {
+        Booking hold = new Booking(resource, entry.getUser(), entry.getSpace(),
+                entry.getTimeRange(), BookingStatus.HELD);
+        hold.setHoldExpiresAt(Instant.now().plusSeconds(holdSeconds));
+        Booking saved;
+        try {
+            saved = bookingRepository.saveAndFlush(hold);
+        } catch (DataIntegrityViolationException ex) {
+            return false;
+        }
+        entry.setStatus(WaitlistStatus.OFFERED);
+        entry.setHeldBooking(saved);
+
+        UUID userId = entry.getUser().getId();
+        WaitlistMessage message = messageFor(entry, saved.getHoldExpiresAt(), WaitlistState.OFFERED);
+        LocalDate date = TimeRangeUtil.lower(entry.getTimeRange()).toLocalDate();
+        publishAfterCommit(() -> {
+            availabilityCache.evict(entry.getSpace().getId(), date);
+            waitlistEventPublisher.publishOffer(userId, message);
+        });
+        return true;
+    }
+
+    /** Claims a live offer, turning the hold into a confirmed booking. */
+    @Transactional
+    public BookingResponse claim(UUID userId, UUID entryId) {
+        WaitlistEntry entry = waitlistEntryRepository.findById(entryId)
+                .orElseThrow(() -> new ResourceNotFoundException("Waitlist entry not found"));
+        if (!entry.getUser().getId().equals(userId)) {
+            throw new ForbiddenException("You can only claim your own offer");
+        }
+        if (entry.getStatus() != WaitlistStatus.OFFERED || entry.getHeldBooking() == null) {
+            throw new OfferExpiredException("No live offer to claim");
+        }
+        Booking hold = bookingRepository.findByIdForUpdate(entry.getHeldBooking().getId())
+                .orElseThrow(() -> new OfferExpiredException("The offer has expired"));
+        if (hold.getStatus() != BookingStatus.HELD
+                || hold.getHoldExpiresAt() == null
+                || hold.getHoldExpiresAt().isBefore(Instant.now())) {
+            throw new OfferExpiredException("The offer has expired");
+        }
+        hold.setStatus(BookingStatus.CONFIRMED);
+        hold.setHoldExpiresAt(null);
+        entry.setStatus(WaitlistStatus.FULFILLED);
+
+        BookingResponse response = BookingResponse.from(hold);
+        WaitlistMessage message = messageFor(entry, null, WaitlistState.GRANTED);
+        LocalDate date = response.startTime().toLocalDate();
+        publishAfterCommit(() -> {
+            availabilityCache.evict(response.spaceId(), date);
+            availabilityEventPublisher.publishBooked(new SlotChange(
+                    response.spaceId(), response.resourceId(), response.resourceName(),
+                    response.startTime(), response.endTime()));
+            waitlistEventPublisher.publishGranted(userId, message);
+        });
+        return response;
+    }
+
+    /** Expires one hold (called by the scheduler) and cascades to the next waiter. */
+    @Transactional
+    public void expireHold(UUID bookingId) {
+        Booking hold = bookingRepository.findByIdForUpdate(bookingId).orElse(null);
+        if (hold == null || hold.getStatus() != BookingStatus.HELD) {
+            return;
+        }
+        if (hold.getHoldExpiresAt() == null || hold.getHoldExpiresAt().isAfter(Instant.now())) {
+            return;
+        }
+        hold.setStatus(BookingStatus.EXPIRED);
+        waitlistEntryRepository.findByHeldBooking_Id(bookingId)
+                .ifPresent(entry -> entry.setStatus(WaitlistStatus.EXPIRED));
+        promoteForReleasedSlot(new SlotChange(
+                hold.getSpace().getId(), hold.getResource().getId(), hold.getResource().getName(),
+                TimeRangeUtil.lower(hold.getTimeRange()), TimeRangeUtil.upper(hold.getTimeRange())));
     }
 
     private void declineOffer(WaitlistEntry entry) {
-        // Implemented in Task 6.
+        Booking hold = entry.getHeldBooking();
+        entry.setStatus(WaitlistStatus.CANCELLED);
+        if (hold != null && hold.getStatus() == BookingStatus.HELD) {
+            hold.setStatus(BookingStatus.EXPIRED);
+            promoteForReleasedSlot(new SlotChange(
+                    hold.getSpace().getId(), hold.getResource().getId(), hold.getResource().getName(),
+                    TimeRangeUtil.lower(hold.getTimeRange()), TimeRangeUtil.upper(hold.getTimeRange())));
+        }
+    }
+
+    private WaitlistMessage messageFor(WaitlistEntry entry, Instant expiresAt, WaitlistState state) {
+        return new WaitlistMessage(
+                entry.getId(),
+                entry.getResource().getId(),
+                entry.getResource().getName(),
+                entry.getSpace().getId(),
+                TimeRangeUtil.lower(entry.getTimeRange()),
+                TimeRangeUtil.upper(entry.getTimeRange()),
+                expiresAt,
+                state);
+    }
+
+    private void publishAfterCommit(Runnable action) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    action.run();
+                }
+            });
+        } else {
+            action.run();
+        }
     }
 
     private int positionOf(WaitlistEntry entry) {
