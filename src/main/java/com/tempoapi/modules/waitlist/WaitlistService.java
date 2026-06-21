@@ -237,14 +237,21 @@ public class WaitlistService implements WaitlistPromoter {
     }
 
     private void declineOffer(WaitlistEntry entry) {
-        Booking hold = entry.getHeldBooking();
         entry.setStatus(WaitlistStatus.CANCELLED);
-        if (hold != null && hold.getStatus() == BookingStatus.HELD) {
-            hold.setStatus(BookingStatus.EXPIRED);
-            promoteForReleasedSlot(new SlotChange(
-                    hold.getSpace().getId(), hold.getResource().getId(), hold.getResource().getName(),
-                    TimeRangeUtil.lower(hold.getTimeRange()), TimeRangeUtil.upper(hold.getTimeRange())));
+        if (entry.getHeldBooking() == null) {
+            return;
         }
+        Booking hold = bookingRepository.findByIdForUpdate(entry.getHeldBooking().getId()).orElse(null);
+        if (hold == null || hold.getStatus() != BookingStatus.HELD) {
+            return;
+        }
+        hold.setStatus(BookingStatus.EXPIRED);
+        promoteForReleasedSlot(new SlotChange(
+                hold.getSpace().getId(),
+                hold.getResource().getId(),
+                hold.getResource().getName(),
+                TimeRangeUtil.lower(hold.getTimeRange()),
+                TimeRangeUtil.upper(hold.getTimeRange())));
     }
 
     private WaitlistMessage messageFor(WaitlistEntry entry, Instant expiresAt, WaitlistState state) {
