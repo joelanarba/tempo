@@ -64,7 +64,7 @@ public class AvailabilityService {
         OffsetDateTime windowEnd = TimeRangeUtil.startOfNextDayUtc(date);
 
         List<Resource> resources = resourceRepository.findBySpaceIdAndActiveTrueOrderByName(spaceId);
-        List<Booking> bookings = bookingRepository.findConfirmedInSpaceForWindow(spaceId, windowStart, windowEnd);
+        List<Booking> bookings = bookingRepository.findOccupiedInSpaceForWindow(spaceId, windowStart, windowEnd);
 
         Map<UUID, List<BookedSlot>> slotsByResource = new HashMap<>();
         for (Booking booking : bookings) {

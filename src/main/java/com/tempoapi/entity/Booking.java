@@ -60,6 +60,9 @@ public class Booking {
     @Column(name = "cancelled_at")
     private Instant cancelledAt;
 
+    @Column(name = "hold_expires_at")
+    private Instant holdExpiresAt;
+
     public Booking() {
     }
 
@@ -133,5 +136,13 @@ public class Booking {
 
     public void setCancelledAt(Instant cancelledAt) {
         this.cancelledAt = cancelledAt;
+    }
+
+    public Instant getHoldExpiresAt() {
+        return holdExpiresAt;
+    }
+
+    public void setHoldExpiresAt(Instant holdExpiresAt) {
+        this.holdExpiresAt = holdExpiresAt;
     }
 }

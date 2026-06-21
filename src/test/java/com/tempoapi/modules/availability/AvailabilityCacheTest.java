@@ -74,7 +74,7 @@ class AvailabilityCacheTest extends AbstractIntegrationTest {
         availabilityService.getSnapshot(spaceId, date);
         availabilityService.getSnapshot(spaceId, date);
 
-        verify(bookingRepository, times(1)).findConfirmedInSpaceForWindow(eq(spaceId), any(), any());
+        verify(bookingRepository, times(1)).findOccupiedInSpaceForWindow(eq(spaceId), any(), any());
     }
 
     @Test
@@ -87,6 +87,6 @@ class AvailabilityCacheTest extends AbstractIntegrationTest {
 
         // First read (miss) and the post-eviction read (miss) both query; the create itself
         // does not call this query method.
-        verify(bookingRepository, times(2)).findConfirmedInSpaceForWindow(eq(spaceId), any(), any());
+        verify(bookingRepository, times(2)).findOccupiedInSpaceForWindow(eq(spaceId), any(), any());
     }
 }
