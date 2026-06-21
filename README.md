@@ -177,6 +177,8 @@ decoupled from booking logic.
 | `JWT_EXPIRY_MS`                  | no       | `900000` (15 min)       | Access-token lifetime                                  |
 | `JWT_REFRESH_EXPIRY_MS`          | no       | `604800000` (7 days)    | Refresh-token lifetime                                 |
 | `AVAILABILITY_CACHE_TTL_SECONDS` | no       | `30`                    | TTL for cached availability snapshots                  |
+| `WAITLIST_HOLD_SECONDS`          | no       | `120`                   | How long a HELD offer is valid before it expires       |
+| `WAITLIST_SWEEP_MS`              | no       | `10000`                 | How often the expiry sweep runs (milliseconds)         |
 | `APP_BASE_URL`                   | no       | `http://localhost:8080` | Public base URL                                        |
 | `SERVER_PORT`                    | no       | `8080`                  | HTTP port                                              |
 | `SEED_ADMIN_PASSWORD`            | no       | —                       | Admin password used only under the `setup` profile     |
@@ -239,6 +241,42 @@ All responses use the envelope `{ success, message, data }`. All protected endpo
 | ------ | ------------------------------------------ | ------ | --------------------------------------------- |
 | GET    | `/api/v1/spaces/{spaceId}/availability`    | bearer | Snapshot of booked slots per resource (`?date=`) |
 
+### Waitlist and auto-promotion
+
+When a resource is fully booked for a time slot, members can join a FIFO waitlist for that
+slot. If the active booking is cancelled (or a hold expires), Tempo automatically promotes
+the next member in line: it creates a time-bounded exclusive HOLD on the slot and sends that
+member a private offer notification over WebSocket. The member can claim the hold to confirm
+the booking, or decline (or let it expire) to pass the offer to the next person in the queue.
+If no one is waiting, the slot becomes publicly available again.
+
+Held slots are protected by the same PostgreSQL GiST exclusion constraint as confirmed
+bookings — a direct booker cannot take a slot that is held for someone in the queue.
+
+**Entry lifecycle states:** `WAITING` -> `OFFERED` -> `FULFILLED`, or `EXPIRED` / `CANCELLED`.
+
+| Method | Path                                         | Auth   | Status | Description                                                  |
+| ------ | -------------------------------------------- | ------ | ------ | ------------------------------------------------------------ |
+| POST   | `/api/v1/waitlist`                           | bearer | 201    | Join the waitlist for a currently-taken resource + slot      |
+| GET    | `/api/v1/waitlist/mine`                      | bearer | 200    | My waitlist entries, paginated (includes live offer expiry)  |
+| DELETE | `/api/v1/waitlist/{entryId}`                 | bearer | 200    | Leave (if WAITING) or decline an offer (if OFFERED); declining triggers immediate cascade to the next waiter |
+| POST   | `/api/v1/waitlist/offers/{entryId}/claim`    | bearer | 200    | Claim a live offer; transitions HELD -> CONFIRMED and returns a `BookingResponse`; returns 410 Gone if the offer has expired |
+
+**Join waitlist — request body:**
+
+```json
+{ "resourceId": "uuid", "startTime": "2026-12-01T09:00:00Z", "endTime": "2026-12-01T10:00:00Z" }
+```
+
+**Join waitlist — response `data`:**
+
+```json
+{ "id": "uuid", "position": 1, "status": "WAITING" }
+```
+
+**Validation errors:** joining a slot that is currently free returns 400; joining a slot you
+are already queued for returns 409.
+
 A ready-to-use Postman collection is in
 [`docs/tempo-api.postman_collection.json`](docs/tempo-api.postman_collection.json).
 
@@ -247,9 +285,15 @@ A ready-to-use Postman collection is in
 - Connect (with SockJS) to `/ws`.
 - Send the JWT on the STOMP CONNECT frame as `Authorization: Bearer <accessToken>`.
   Connections without a valid token are rejected.
-- Subscribe to `/topic/spaces/{spaceId}/availability`.
-- Receive `{ resourceId, resourceName, startTime, endTime, state }` where `state` is
-  `BOOKED` or `AVAILABLE`.
+- Subscribe to `/topic/spaces/{spaceId}/availability` for public availability deltas.
+  Receive `{ resourceId, resourceName, startTime, endTime, state }` where `state` is
+  `BOOKED` or `AVAILABLE`. Held slots are broadcast as `BOOKED` so they appear unavailable
+  to members who are not the offer recipient.
+- Subscribe to `/user/queue/waitlist` for private waitlist offer notifications. This
+  destination is user-scoped: each member receives only their own offers. The message shape
+  is `{ entryId, resourceId, resourceName, startTime, endTime, expiresAt, state }` where
+  `state` is `OFFERED` (a new hold has been created for you) or `GRANTED` (your claim was
+  confirmed).
 
 A copy-paste browser test page and `wscat` instructions are in
 [`docs/websocket-testing.md`](docs/websocket-testing.md).

@@ -81,6 +81,55 @@ wscat -c ws://localhost:8080/ws/websocket
 > ^@
 ```
 
+## Subscribing to waitlist offer notifications
+
+When a slot becomes available and a member is next in the queue, the server sends a private
+offer message directly to that member over a user-scoped destination. To receive it,
+subscribe to `/user/queue/waitlist` after connecting.
+
+Add this subscription inside `onConnect` in the browser page:
+
+```javascript
+client.subscribe("/user/queue/waitlist", (msg) => {
+  log("waitlist offer: " + msg.body);
+});
+```
+
+Or with wscat, after the CONNECT handshake:
+
+```
+> SUBSCRIBE
+> id:sub-1
+> destination:/user/queue/waitlist
+>
+> ^@
+```
+
+This destination is user-scoped: each connected member receives only offers addressed to
+them. Other members' offers do not arrive here.
+
+Sample offer message (state `OFFERED`):
+
+```json
+{
+  "entryId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "resourceId": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
+  "resourceName": "Desk 3",
+  "startTime": "2026-12-01T09:00:00Z",
+  "endTime": "2026-12-01T10:00:00Z",
+  "expiresAt": "2026-12-01T09:02:00Z",
+  "state": "OFFERED"
+}
+```
+
+When the member calls `POST /api/v1/waitlist/offers/{entryId}/claim` and the claim succeeds,
+a follow-up message with `state: "GRANTED"` arrives on the same destination.
+
+If the offer expires before the member claims it, the server transitions the hold to
+`EXPIRED` and cascades to the next waiter. The original recipient receives no further
+message on this destination for that entry; they will see the entry in `EXPIRED` status if
+they call `GET /api/v1/waitlist/mine`.
+
 ## Rejection check
 
 Connecting without a valid `Authorization` header on the CONNECT frame is rejected before

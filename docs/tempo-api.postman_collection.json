@@ -11,7 +11,8 @@
     { "key": "admin_token", "value": "" },
     { "key": "spaceId", "value": "" },
     { "key": "resourceId", "value": "" },
-    { "key": "bookingId", "value": "" }
+    { "key": "bookingId", "value": "" },
+    { "key": "entryId", "value": "" }
   ],
   "item": [
     {
@@ -338,6 +339,59 @@
             "method": "GET",
             "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
             "url": { "raw": "{{base_url}}/api/v1/spaces/{{spaceId}}/availability?date=2026-12-01", "host": ["{{base_url}}"], "path": ["api", "v1", "spaces", "{{spaceId}}", "availability"], "query": [{ "key": "date", "value": "2026-12-01" }] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Waitlist",
+      "item": [
+        {
+          "name": "Join waitlist",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/api/v1/waitlist", "host": ["{{base_url}}"], "path": ["api", "v1", "waitlist"] },
+            "body": { "mode": "raw", "raw": "{\n  \"resourceId\": \"{{resourceId}}\",\n  \"startTime\": \"2026-12-01T09:00:00Z\",\n  \"endTime\": \"2026-12-01T10:00:00Z\"\n}" }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.data && json.data.id) { pm.collectionVariables.set('entryId', json.data.id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "My waitlist entries",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": { "raw": "{{base_url}}/api/v1/waitlist/mine?page=0&size=20", "host": ["{{base_url}}"], "path": ["api", "v1", "waitlist", "mine"], "query": [{ "key": "page", "value": "0" }, { "key": "size", "value": "20" }] }
+          }
+        },
+        {
+          "name": "Leave or decline waitlist entry",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": { "raw": "{{base_url}}/api/v1/waitlist/{{entryId}}", "host": ["{{base_url}}"], "path": ["api", "v1", "waitlist", "{{entryId}}"] }
+          }
+        },
+        {
+          "name": "Claim offer",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": { "raw": "{{base_url}}/api/v1/waitlist/offers/{{entryId}}/claim", "host": ["{{base_url}}"], "path": ["api", "v1", "waitlist", "offers", "{{entryId}}", "claim"] }
           }
         }
       ]
