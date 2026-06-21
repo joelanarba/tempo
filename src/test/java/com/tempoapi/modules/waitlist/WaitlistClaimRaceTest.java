@@ -34,7 +34,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ActiveProfiles("test")
-@TestPropertySource(properties = "app.waitlist.hold-seconds=1")
+@TestPropertySource(properties = "app.waitlist.hold-seconds=3")
 class WaitlistClaimRaceTest extends AbstractIntegrationTest {
 
     @Autowired
@@ -72,7 +72,7 @@ class WaitlistClaimRaceTest extends AbstractIntegrationTest {
     @Test
     void sweeperWinsAfterExpiryAndClaimIsRejected() throws InterruptedException {
         WaitlistEntry entry = offerToWaiter();
-        Thread.sleep(1100);
+        Thread.sleep(3100);
         waitlistScheduler.sweepExpiredHolds();
 
         assertThatThrownBy(() -> waitlistService.claim(entry.getUser().getId(), entry.getId()))
@@ -85,7 +85,7 @@ class WaitlistClaimRaceTest extends AbstractIntegrationTest {
         BookingResponse confirmed = waitlistService.claim(entry.getUser().getId(), entry.getId());
         assertThat(confirmed.status()).isEqualTo(BookingStatus.CONFIRMED);
 
-        Thread.sleep(1100);
+        Thread.sleep(3100);
         waitlistScheduler.sweepExpiredHolds(); // must not touch the now-confirmed booking
 
         WaitlistEntry reloaded = waitlistEntryRepository.findById(entry.getId()).orElseThrow();

@@ -71,7 +71,9 @@ class WaitlistCascadeIntegrationTest extends AbstractIntegrationTest {
                 .findByUserId(b.getId(), org.springframework.data.domain.Pageable.unpaged())
                 .getContent().get(0);
         assertThat(bEntry.getStatus()).isEqualTo(WaitlistStatus.OFFERED);
-        assertThat(bEntry.getHeldBooking().getStatus()).isEqualTo(BookingStatus.HELD);
+        java.util.UUID heldId = bEntry.getHeldBooking().getId();
+        assertThat(bookingRepository.findById(heldId).orElseThrow().getStatus())
+                .isEqualTo(BookingStatus.HELD);
 
         waitlistService.leaveOrDecline(b.getId(), bEntry.getId());
 
