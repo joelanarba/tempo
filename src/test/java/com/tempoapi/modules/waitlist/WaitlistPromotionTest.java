@@ -52,10 +52,12 @@ class WaitlistPromotionTest {
     @Mock private AvailabilityCache availabilityCache;
     @Mock private AvailabilityEventPublisher availabilityEventPublisher;
     @Mock private WaitlistEventPublisher waitlistEventPublisher;
+    @Mock private WaitlistPromoter waitlistPromoter;
 
     private WaitlistService service() {
         return new WaitlistService(waitlistEntryRepository, bookingRepository, resourceRepository,
-                userRepository, availabilityCache, availabilityEventPublisher, waitlistEventPublisher, 120);
+                userRepository, availabilityCache, availabilityEventPublisher, waitlistEventPublisher, 120,
+                waitlistPromoter);
     }
 
     private OffsetDateTime at(int hour) {
@@ -158,5 +160,28 @@ class WaitlistPromotionTest {
 
         assertThatThrownBy(() -> service().claim(waiter.getId(), entry.getId()))
                 .isInstanceOf(OfferExpiredException.class);
+    }
+
+    @Test
+    void expireHoldMarksExpiredAndDelegatesPromotion() {
+        Space space = space();
+        Resource resource = resource(space);
+        User waiter = new User("w@tempo.africa", "h", "F", "L", Role.MEMBER);
+        waiter.setId(UUID.randomUUID());
+        Booking held = new Booking(resource, waiter, space, TimeRangeUtil.toRange(at(9), at(10)), BookingStatus.HELD);
+        held.setId(UUID.randomUUID());
+        held.setHoldExpiresAt(Instant.now().minusSeconds(1));
+        WaitlistEntry entry = new WaitlistEntry(resource, space, waiter,
+                TimeRangeUtil.toRange(at(9), at(10)), WaitlistStatus.OFFERED);
+        entry.setHeldBooking(held);
+
+        when(bookingRepository.findByIdForUpdate(held.getId())).thenReturn(Optional.of(held));
+        when(waitlistEntryRepository.findByHeldBooking_Id(held.getId())).thenReturn(Optional.of(entry));
+
+        service().expireHold(held.getId());
+
+        assertThat(held.getStatus()).isEqualTo(BookingStatus.EXPIRED);
+        assertThat(entry.getStatus()).isEqualTo(WaitlistStatus.EXPIRED);
+        verify(waitlistPromoter).promoteForReleasedSlot(any(SlotChange.class));
     }
 }

@@ -47,10 +47,12 @@ class WaitlistServiceTest {
     @Mock private AvailabilityCache availabilityCache;
     @Mock private AvailabilityEventPublisher availabilityEventPublisher;
     @Mock private WaitlistEventPublisher waitlistEventPublisher;
+    @Mock private WaitlistPromoter waitlistPromoter;
 
     private WaitlistService service() {
         return new WaitlistService(waitlistEntryRepository, bookingRepository, resourceRepository,
-                userRepository, availabilityCache, availabilityEventPublisher, waitlistEventPublisher, 120);
+                userRepository, availabilityCache, availabilityEventPublisher, waitlistEventPublisher, 120,
+                waitlistPromoter);
     }
 
     private OffsetDateTime at(int hour) {

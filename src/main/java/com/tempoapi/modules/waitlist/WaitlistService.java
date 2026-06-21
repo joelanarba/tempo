@@ -28,6 +28,7 @@ import com.tempoapi.websocket.WaitlistEventPublisher;
 import com.tempoapi.websocket.WaitlistMessage;
 import com.tempoapi.websocket.WaitlistState;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -52,6 +53,7 @@ public class WaitlistService implements WaitlistPromoter {
     private final AvailabilityEventPublisher availabilityEventPublisher;
     private final WaitlistEventPublisher waitlistEventPublisher;
     private final long holdSeconds;
+    private final WaitlistPromoter self;
 
     public WaitlistService(WaitlistEntryRepository waitlistEntryRepository,
                            BookingRepository bookingRepository,
@@ -60,7 +62,8 @@ public class WaitlistService implements WaitlistPromoter {
                            AvailabilityCache availabilityCache,
                            AvailabilityEventPublisher availabilityEventPublisher,
                            WaitlistEventPublisher waitlistEventPublisher,
-                           @Value("${app.waitlist.hold-seconds:120}") long holdSeconds) {
+                           @Value("${app.waitlist.hold-seconds:120}") long holdSeconds,
+                           @Lazy WaitlistPromoter self) {
         this.waitlistEntryRepository = waitlistEntryRepository;
         this.bookingRepository = bookingRepository;
         this.resourceRepository = resourceRepository;
@@ -69,6 +72,7 @@ public class WaitlistService implements WaitlistPromoter {
         this.availabilityEventPublisher = availabilityEventPublisher;
         this.waitlistEventPublisher = waitlistEventPublisher;
         this.holdSeconds = holdSeconds;
+        this.self = self;
     }
 
     /** Joins the FIFO waitlist for a currently-taken resource and slot. */
@@ -231,9 +235,13 @@ public class WaitlistService implements WaitlistPromoter {
         hold.setStatus(BookingStatus.EXPIRED);
         waitlistEntryRepository.findByHeldBooking_Id(bookingId)
                 .ifPresent(entry -> entry.setStatus(WaitlistStatus.EXPIRED));
-        promoteForReleasedSlot(new SlotChange(
-                hold.getSpace().getId(), hold.getResource().getId(), hold.getResource().getName(),
-                TimeRangeUtil.lower(hold.getTimeRange()), TimeRangeUtil.upper(hold.getTimeRange())));
+        SlotChange slot = new SlotChange(
+                hold.getSpace().getId(),
+                hold.getResource().getId(),
+                hold.getResource().getName(),
+                TimeRangeUtil.lower(hold.getTimeRange()),
+                TimeRangeUtil.upper(hold.getTimeRange()));
+        publishAfterCommit(() -> self.promoteForReleasedSlot(slot));
     }
 
     private void declineOffer(WaitlistEntry entry) {
@@ -246,12 +254,13 @@ public class WaitlistService implements WaitlistPromoter {
             return;
         }
         hold.setStatus(BookingStatus.EXPIRED);
-        promoteForReleasedSlot(new SlotChange(
+        SlotChange slot = new SlotChange(
                 hold.getSpace().getId(),
                 hold.getResource().getId(),
                 hold.getResource().getName(),
                 TimeRangeUtil.lower(hold.getTimeRange()),
-                TimeRangeUtil.upper(hold.getTimeRange())));
+                TimeRangeUtil.upper(hold.getTimeRange()));
+        publishAfterCommit(() -> self.promoteForReleasedSlot(slot));
     }
 
     private WaitlistMessage messageFor(WaitlistEntry entry, Instant expiresAt, WaitlistState state) {
