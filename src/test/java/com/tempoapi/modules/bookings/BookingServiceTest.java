@@ -12,6 +12,7 @@ import com.tempoapi.exception.ValidationException;
 import com.tempoapi.modules.availability.AvailabilityCache;
 import com.tempoapi.modules.bookings.dto.BookingResponse;
 import com.tempoapi.modules.bookings.dto.CreateBookingRequest;
+import com.tempoapi.modules.waitlist.WaitlistPromoter;
 import com.tempoapi.repository.BookingRepository;
 import com.tempoapi.repository.ResourceRepository;
 import com.tempoapi.repository.SpaceRepository;
@@ -55,6 +56,8 @@ class BookingServiceTest {
     private AvailabilityEventPublisher availabilityEventPublisher;
     @Mock
     private AvailabilityCache availabilityCache;
+    @Mock
+    private WaitlistPromoter waitlistPromoter;
     @InjectMocks
     private BookingService bookingService;
 
@@ -143,5 +146,26 @@ class BookingServiceTest {
         assertThat(response.status()).isEqualTo(BookingStatus.CONFIRMED);
         assertThat(response.resourceId()).isEqualTo(resource.getId());
         verify(availabilityEventPublisher).publishBooked(any(SlotChange.class));
+    }
+
+    @Test
+    void cancelDelegatesToWaitlistPromoter() {
+        Space space = activeSpace();
+        Resource resource = activeResource(space);
+        UUID userId = UUID.randomUUID();
+        User user = new User("e@tempo.africa", "hash", "First", "Last", Role.MEMBER);
+        user.setId(userId);
+
+        OffsetDateTime start = tomorrowAt(9);
+        OffsetDateTime end = tomorrowAt(10);
+        Booking booking = new Booking(resource, user, space, TimeRangeUtil.toRange(start, end), BookingStatus.CONFIRMED);
+        booking.setId(UUID.randomUUID());
+
+        when(bookingRepository.findById(booking.getId())).thenReturn(Optional.of(booking));
+
+        bookingService.cancelBooking(userId, booking.getId());
+
+        assertThat(booking.getStatus()).isEqualTo(BookingStatus.CANCELLED);
+        verify(waitlistPromoter).promoteForReleasedSlot(any(SlotChange.class));
     }
 }

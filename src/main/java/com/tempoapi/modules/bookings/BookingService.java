@@ -13,6 +13,7 @@ import com.tempoapi.exception.ValidationException;
 import com.tempoapi.modules.availability.AvailabilityCache;
 import com.tempoapi.modules.bookings.dto.BookingResponse;
 import com.tempoapi.modules.bookings.dto.CreateBookingRequest;
+import com.tempoapi.modules.waitlist.WaitlistPromoter;
 import com.tempoapi.repository.BookingRepository;
 import com.tempoapi.repository.ResourceRepository;
 import com.tempoapi.repository.SpaceRepository;
@@ -41,19 +42,22 @@ public class BookingService {
     private final UserRepository userRepository;
     private final AvailabilityEventPublisher availabilityEventPublisher;
     private final AvailabilityCache availabilityCache;
+    private final WaitlistPromoter waitlistPromoter;
 
     public BookingService(BookingRepository bookingRepository,
                           ResourceRepository resourceRepository,
                           SpaceRepository spaceRepository,
                           UserRepository userRepository,
                           AvailabilityEventPublisher availabilityEventPublisher,
-                          AvailabilityCache availabilityCache) {
+                          AvailabilityCache availabilityCache,
+                          WaitlistPromoter waitlistPromoter) {
         this.bookingRepository = bookingRepository;
         this.resourceRepository = resourceRepository;
         this.spaceRepository = spaceRepository;
         this.userRepository = userRepository;
         this.availabilityEventPublisher = availabilityEventPublisher;
         this.availabilityCache = availabilityCache;
+        this.waitlistPromoter = waitlistPromoter;
     }
 
     /**
@@ -124,11 +128,7 @@ public class BookingService {
 
         BookingResponse response = BookingResponse.from(booking);
         SlotChange slot = toSlot(response);
-        LocalDate affectedDate = slot.startTime().toLocalDate();
-        publishAfterCommit(() -> {
-            availabilityCache.evict(slot.spaceId(), affectedDate);
-            availabilityEventPublisher.publishAvailable(slot);
-        });
+        publishAfterCommit(() -> waitlistPromoter.promoteForReleasedSlot(slot));
         return response;
     }
 
