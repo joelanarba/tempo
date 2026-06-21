@@ -92,6 +92,21 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.METHOD_NOT_ALLOWED, "HTTP method not supported for this endpoint");
     }
 
+    @ExceptionHandler(OfferExpiredException.class)
+    public ResponseEntity<ApiResponse<Void>> handleOfferExpired(OfferExpiredException ex) {
+        return build(HttpStatus.GONE, ex.getMessage());
+    }
+
+    @ExceptionHandler(AlreadyWaitlistedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAlreadyWaitlisted(AlreadyWaitlistedException ex) {
+        return build(HttpStatus.CONFLICT, ex.getMessage());
+    }
+
+    @ExceptionHandler(SlotAvailableException.class)
+    public ResponseEntity<ApiResponse<Void>> handleSlotAvailable(SlotAvailableException ex) {
+        return build(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ApiResponse<Void>> handleDataIntegrity(DataIntegrityViolationException ex) {
         log.warn("Data integrity violation: {}", ex.getMostSpecificCause().getMessage());
