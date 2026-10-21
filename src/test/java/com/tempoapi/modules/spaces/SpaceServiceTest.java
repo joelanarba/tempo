@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import com.tempoapi.modules.availability.AvailabilityChanges;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalTime;
@@ -29,6 +30,8 @@ class SpaceServiceTest {
 
     @Mock
     private SpaceRepository spaceRepository;
+    @Mock
+    private AvailabilityChanges availabilityChanges;
     @InjectMocks
     private SpaceService spaceService;
 
@@ -65,7 +68,7 @@ class SpaceServiceTest {
     void updateChangesMutableFields() {
         UUID id = UUID.randomUUID();
         Space space = new Space("Old", "Old loc", "old", LocalTime.of(7, 0), LocalTime.of(19, 0));
-        when(spaceRepository.findById(id)).thenReturn(Optional.of(space));
+        when(spaceRepository.findByIdForUpdate(id)).thenReturn(Optional.of(space));
 
         SpaceResponse response = spaceService.update(id, new UpdateSpaceRequest(
                 "New", "New loc", "new", LocalTime.of(9, 0), LocalTime.of(17, 0)));
@@ -79,7 +82,7 @@ class SpaceServiceTest {
     void deactivateSetsInactive() {
         UUID id = UUID.randomUUID();
         Space space = new Space("Hub", "Accra", "desc", LocalTime.of(8, 0), LocalTime.of(18, 0));
-        when(spaceRepository.findById(id)).thenReturn(Optional.of(space));
+        when(spaceRepository.findByIdForUpdate(id)).thenReturn(Optional.of(space));
 
         spaceService.deactivate(id);
 

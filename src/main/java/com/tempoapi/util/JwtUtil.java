@@ -67,11 +67,20 @@ public class JwtUtil {
 
     /** Verifies the signature and expiry and returns the claims, or throws {@link io.jsonwebtoken.JwtException}. */
     public Claims parse(String token) {
-        return Jwts.parser()
+        Claims claims = Jwts.parser()
                 .verifyWith(key)
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();
+        if (claims.getSubject() == null || claims.getId() == null || claims.getId().isBlank()
+                || claims.getExpiration() == null) {
+            throw new io.jsonwebtoken.MalformedJwtException("Required token claims are missing");
+        }
+        UUID.fromString(claims.getSubject());
+        if (isAccessToken(claims)) {
+            Role.valueOf(extractRole(claims) == null ? "" : extractRole(claims));
+        }
+        return claims;
     }
 
     public UUID extractUserId(Claims claims) {

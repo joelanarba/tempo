@@ -10,7 +10,7 @@ import com.tempoapi.exception.ForbiddenException;
 import com.tempoapi.exception.ResourceNotFoundException;
 import com.tempoapi.exception.SlotUnavailableException;
 import com.tempoapi.exception.ValidationException;
-import com.tempoapi.modules.availability.AvailabilityCache;
+import com.tempoapi.modules.availability.AvailabilityChanges;
 import com.tempoapi.modules.bookings.dto.BookingResponse;
 import com.tempoapi.modules.bookings.dto.CreateBookingRequest;
 import com.tempoapi.modules.waitlist.WaitlistPromoter;
@@ -19,16 +19,14 @@ import com.tempoapi.repository.ResourceRepository;
 import com.tempoapi.repository.SpaceRepository;
 import com.tempoapi.repository.UserRepository;
 import com.tempoapi.util.TimeRangeUtil;
-import com.tempoapi.websocket.AvailabilityEventPublisher;
+import com.tempoapi.util.BookingTimes;
 import com.tempoapi.websocket.SlotChange;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
-import java.time.Instant;
+import java.time.Clock;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.UUID;
@@ -40,24 +38,24 @@ public class BookingService {
     private final ResourceRepository resourceRepository;
     private final SpaceRepository spaceRepository;
     private final UserRepository userRepository;
-    private final AvailabilityEventPublisher availabilityEventPublisher;
-    private final AvailabilityCache availabilityCache;
+    private final AvailabilityChanges availabilityChanges;
     private final WaitlistPromoter waitlistPromoter;
+    private final Clock clock;
 
     public BookingService(BookingRepository bookingRepository,
                           ResourceRepository resourceRepository,
                           SpaceRepository spaceRepository,
                           UserRepository userRepository,
-                          AvailabilityEventPublisher availabilityEventPublisher,
-                          AvailabilityCache availabilityCache,
-                          WaitlistPromoter waitlistPromoter) {
+                          AvailabilityChanges availabilityChanges,
+                          WaitlistPromoter waitlistPromoter,
+                          Clock clock) {
         this.bookingRepository = bookingRepository;
         this.resourceRepository = resourceRepository;
         this.spaceRepository = spaceRepository;
         this.userRepository = userRepository;
-        this.availabilityEventPublisher = availabilityEventPublisher;
-        this.availabilityCache = availabilityCache;
+        this.availabilityChanges = availabilityChanges;
         this.waitlistPromoter = waitlistPromoter;
+        this.clock = clock;
     }
 
     /**
@@ -69,7 +67,7 @@ public class BookingService {
      */
     @Transactional
     public BookingResponse createBooking(UUID userId, CreateBookingRequest request) {
-        validateTimes(request.startTime(), request.endTime());
+        BookingTimes.validateFuture(request.startTime(), request.endTime(), clock.instant());
 
         // Acquire the row lock first; everything below runs inside the locked transaction.
         Resource resource = resourceRepository.findByIdForUpdate(request.resourceId())
@@ -81,7 +79,8 @@ public class BookingService {
         if (!space.isActive()) {
             throw new ResourceNotFoundException("Resource is not available");
         }
-        validateWithinOpeningHours(space, request.startTime(), request.endTime());
+        BookingTimes.validateHours(space, request.startTime(), request.endTime());
+        BookingTimes.validateFuture(request.startTime(), request.endTime(), clock.instant());
 
         OffsetDateTime start = TimeRangeUtil.toUtc(request.startTime());
         OffsetDateTime end = TimeRangeUtil.toUtc(request.endTime());
@@ -91,6 +90,9 @@ public class BookingService {
         }
 
         User user = userRepository.getReferenceById(userId);
+        if (!user.isActive()) {
+            throw new ForbiddenException("Account is disabled");
+        }
         Booking booking = new Booking(resource, user, space,
                 TimeRangeUtil.toRange(request.startTime(), request.endTime()), BookingStatus.CONFIRMED);
 
@@ -99,23 +101,26 @@ public class BookingService {
             // Flush now so a constraint violation surfaces here, not at an opaque commit.
             saved = bookingRepository.saveAndFlush(booking);
         } catch (DataIntegrityViolationException ex) {
+            if (!isOverlapViolation(ex)) {
+                throw ex;
+            }
             throw new SlotUnavailableException("The requested slot is no longer available");
         }
 
         BookingResponse response = BookingResponse.from(saved);
         SlotChange slot = toSlot(response);
-        LocalDate affectedDate = slot.startTime().toLocalDate();
-        publishAfterCommit(() -> {
-            availabilityCache.evict(slot.spaceId(), affectedDate);
-            availabilityEventPublisher.publishBooked(slot);
-        });
+        availabilityChanges.booked(slot);
         return response;
     }
 
     /** Cancels the caller's own CONFIRMED booking and frees the slot. */
     @Transactional
     public BookingResponse cancelBooking(UUID userId, UUID bookingId) {
-        Booking booking = bookingRepository.findById(bookingId)
+        UUID resourceId = bookingRepository.findResourceIdById(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Booking not found"));
+        resourceRepository.findByIdForUpdate(resourceId)
+                .orElseThrow(() -> new ResourceNotFoundException("Resource not found"));
+        Booking booking = bookingRepository.findByIdForUpdate(bookingId)
                 .orElseThrow(() -> new ResourceNotFoundException("Booking not found"));
         if (!booking.getUser().getId().equals(userId)) {
             throw new ForbiddenException("You can only cancel your own booking");
@@ -124,11 +129,12 @@ public class BookingService {
             throw new ValidationException("Booking is not active");
         }
         booking.setStatus(BookingStatus.CANCELLED);
-        booking.setCancelledAt(Instant.now());
+        booking.setCancelledAt(clock.instant());
+        bookingRepository.flush();
 
         BookingResponse response = BookingResponse.from(booking);
         SlotChange slot = toSlot(response);
-        publishAfterCommit(() -> waitlistPromoter.promoteForReleasedSlot(slot));
+        waitlistPromoter.promoteForReleasedSlot(slot);
         return response;
     }
 
@@ -164,25 +170,13 @@ public class BookingService {
         return PageResponse.from(page.map(BookingResponse::from));
     }
 
-    private void validateTimes(OffsetDateTime startTime, OffsetDateTime endTime) {
-        if (!startTime.isBefore(endTime)) {
-            throw new ValidationException("startTime must be before endTime");
+    private boolean isOverlapViolation(Throwable exception) {
+        for (Throwable cause = exception; cause != null; cause = cause.getCause()) {
+            if (cause instanceof java.sql.SQLException sql && "23P01".equals(sql.getSQLState())) {
+                return true;
+            }
         }
-        if (!startTime.isAfter(OffsetDateTime.now())) {
-            throw new ValidationException("startTime must be in the future");
-        }
-    }
-
-    private void validateWithinOpeningHours(Space space, OffsetDateTime startTime, OffsetDateTime endTime) {
-        if (!startTime.toLocalDate().equals(endTime.toLocalDate())) {
-            throw new ValidationException("A booking must start and end on the same day");
-        }
-        if (startTime.toLocalTime().isBefore(space.getOpeningTime())) {
-            throw new ValidationException("Booking starts before the space opening time");
-        }
-        if (endTime.toLocalTime().isAfter(space.getClosingTime())) {
-            throw new ValidationException("Booking ends after the space closing time");
-        }
+        return false;
     }
 
     private SlotChange toSlot(BookingResponse response) {
@@ -194,17 +188,4 @@ public class BookingService {
                 response.endTime());
     }
 
-    /** Runs the action after the current transaction commits, or immediately if none is active. */
-    private void publishAfterCommit(Runnable action) {
-        if (TransactionSynchronizationManager.isSynchronizationActive()) {
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    action.run();
-                }
-            });
-        } else {
-            action.run();
-        }
-    }
 }

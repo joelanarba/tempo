@@ -135,7 +135,7 @@ class AuthServiceTest {
         User user = persistedUser("ama@tempo.africa", "Pa55word!");
         String refreshToken = jwtUtil.generateRefreshToken(user.getId());
         RefreshToken stored = new RefreshToken(user, refreshToken, Instant.now().plusSeconds(3600));
-        when(refreshTokenRepository.findByToken(refreshToken)).thenReturn(Optional.of(stored));
+        when(refreshTokenRepository.findByTokenHash(com.tempoapi.util.TokenHash.of(refreshToken))).thenReturn(Optional.of(stored));
 
         AccessTokenResponse response = authService.refresh(new RefreshRequest(refreshToken));
 
@@ -149,7 +149,7 @@ class AuthServiceTest {
         String refreshToken = jwtUtil.generateRefreshToken(user.getId());
         RefreshToken stored = new RefreshToken(user, refreshToken, Instant.now().plusSeconds(3600));
         stored.setRevoked(true);
-        when(refreshTokenRepository.findByToken(refreshToken)).thenReturn(Optional.of(stored));
+        when(refreshTokenRepository.findByTokenHash(com.tempoapi.util.TokenHash.of(refreshToken))).thenReturn(Optional.of(stored));
 
         assertThatThrownBy(() -> authService.refresh(new RefreshRequest(refreshToken)))
                 .isInstanceOf(UnauthorizedException.class);
@@ -170,7 +170,7 @@ class AuthServiceTest {
         String refreshToken = jwtUtil.generateRefreshToken(user.getId());
         String accessToken = jwtUtil.generateAccessToken(user.getId(), user.getRole());
         RefreshToken stored = new RefreshToken(user, refreshToken, Instant.now().plusSeconds(3600));
-        when(refreshTokenRepository.findByToken(refreshToken)).thenReturn(Optional.of(stored));
+        when(refreshTokenRepository.findByTokenHash(com.tempoapi.util.TokenHash.of(refreshToken))).thenReturn(Optional.of(stored));
 
         authService.logout(accessToken, new LogoutRequest(refreshToken));
 
@@ -183,5 +183,55 @@ class AuthServiceTest {
         User user = new User(email, passwordEncoder.encode(rawPassword), "First", "Last", Role.MEMBER);
         user.setId(UUID.randomUUID());
         return user;
+    }
+
+    @Test
+    void registerStoresOnlyTheRefreshTokenDigest() {
+        when(userRepository.save(any(User.class))).thenAnswer(call -> {
+            User user = call.getArgument(0);
+            user.setId(UUID.randomUUID());
+            return user;
+        });
+        AuthResponse response = authService.register(new RegisterRequest(
+                UUID.randomUUID() + "@tempo.test", UUID.randomUUID().toString(), "Test", "Member"));
+        ArgumentCaptor<RefreshToken> captured = ArgumentCaptor.forClass(RefreshToken.class);
+        verify(refreshTokenRepository).save(captured.capture());
+        assertThat(captured.getValue().getTokenHash()).hasSize(64)
+                .isEqualTo(com.tempoapi.util.TokenHash.of(response.refreshToken()))
+                .isNotEqualTo(response.refreshToken());
+    }
+
+    @Test
+    void logoutRejectsAnotherAccountsRefreshCredential() {
+        User caller = persistedUser("caller@tempo.test", UUID.randomUUID().toString());
+        User other = persistedUser("other@tempo.test", UUID.randomUUID().toString());
+        String token = jwtUtil.generateRefreshToken(other.getId());
+        RefreshToken stored = new RefreshToken(other, token, Instant.now().plusSeconds(60));
+        when(refreshTokenRepository.findByTokenHash(com.tempoapi.util.TokenHash.of(token))).thenReturn(Optional.of(stored));
+        assertThatThrownBy(() -> authService.logout(jwtUtil.generateAccessToken(caller.getId(), caller.getRole()), new LogoutRequest(token)))
+                .isInstanceOf(com.tempoapi.exception.ForbiddenException.class);
+        assertThat(stored.isRevoked()).isFalse();
+        verify(tokenBlocklist, never()).blocklist(any(), any());
+    }
+
+    @Test
+    void failedBlocklistWriteLeavesRefreshCredentialUnrevoked() {
+        User user = persistedUser("member@tempo.test", UUID.randomUUID().toString());
+        String token = jwtUtil.generateRefreshToken(user.getId());
+        RefreshToken stored = new RefreshToken(user, token, Instant.now().plusSeconds(60));
+        when(refreshTokenRepository.findByTokenHash(com.tempoapi.util.TokenHash.of(token))).thenReturn(Optional.of(stored));
+        org.mockito.Mockito.doThrow(new com.tempoapi.exception.ServiceUnavailableException("offline"))
+                .when(tokenBlocklist).blocklist(any(), any());
+        assertThatThrownBy(() -> authService.logout(jwtUtil.generateAccessToken(user.getId(), user.getRole()), new LogoutRequest(token)))
+                .isInstanceOf(com.tempoapi.exception.ServiceUnavailableException.class);
+        assertThat(stored.isRevoked()).isFalse();
+        verify(refreshTokenRepository, never()).save(stored);
+    }
+
+    @Test
+    void rejectsPasswordLongerThanBcryptUtf8ByteLimit() {
+        assertThatThrownBy(() -> authService.register(new RegisterRequest("member@tempo.test", "\u00e9".repeat(40), "Test", "Member")))
+                .isInstanceOf(com.tempoapi.exception.ValidationException.class);
+        verify(userRepository, never()).save(any());
     }
 }

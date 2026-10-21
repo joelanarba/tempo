@@ -1,157 +1,112 @@
 {
   "info": {
     "name": "Tempo API",
-    "description": "Realtime workspace booking system. Set the environment variables base_url, access_token and admin_token. The Login requests populate access_token / admin_token automatically via test scripts.",
-    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Manual local demonstration. Set password variables in a private environment. Run Setup and Booking and waitlist in order, with WebSocket clients subscribed first. Other requests are optional; do not run every folder blindly. Clear generated variables before a fresh demonstration. Never export captured credentials."
   },
   "variable": [
-    { "key": "base_url", "value": "http://localhost:8080" },
-    { "key": "access_token", "value": "" },
-    { "key": "refresh_token", "value": "" },
-    { "key": "admin_token", "value": "" },
-    { "key": "spaceId", "value": "" },
-    { "key": "resourceId", "value": "" },
-    { "key": "bookingId", "value": "" },
-    { "key": "entryId", "value": "" }
+    {
+      "key": "base_url",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "access_token",
+      "value": ""
+    },
+    {
+      "key": "refresh_token",
+      "value": ""
+    },
+    {
+      "key": "waiter_token",
+      "value": ""
+    },
+    {
+      "key": "waiter_refresh",
+      "value": ""
+    },
+    {
+      "key": "admin_token",
+      "value": ""
+    },
+    {
+      "key": "member_email",
+      "value": ""
+    },
+    {
+      "key": "waiter_email",
+      "value": ""
+    },
+    {
+      "key": "spaceId",
+      "value": ""
+    },
+    {
+      "key": "resourceId",
+      "value": ""
+    },
+    {
+      "key": "bookingId",
+      "value": ""
+    },
+    {
+      "key": "claimedBookingId",
+      "value": ""
+    },
+    {
+      "key": "entryId",
+      "value": ""
+    },
+    {
+      "key": "demo_date",
+      "value": ""
+    },
+    {
+      "key": "slot_start",
+      "value": ""
+    },
+    {
+      "key": "slot_end",
+      "value": ""
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "for (const name of ['member_email', 'waiter_email']) {",
+          "  if (!pm.collectionVariables.get(name)) pm.collectionVariables.set(name, pm.variables.replaceIn('{{$guid}}') + '@tempo.test');",
+          "}",
+          "if (!pm.collectionVariables.get('demo_date')) {",
+          "  const day = new Date(); day.setUTCDate(day.getUTCDate() + 1);",
+          "  const date = day.toISOString().slice(0, 10);",
+          "  pm.collectionVariables.set('demo_date', date);",
+          "  pm.collectionVariables.set('slot_start', date + 'T09:00:00Z');",
+          "  pm.collectionVariables.set('slot_end', date + 'T10:00:00Z');",
+          "}",
+          "const body = pm.request.body && pm.request.body.raw || '';",
+          "for (const name of ['admin_password', 'member_password', 'waiter_password']) {",
+          "  if (body.includes('{{' + name + '}}') && !pm.variables.get(name)) throw new Error('Set ' + name + ' in a private environment.');",
+          "}"
+        ]
+      }
+    }
   ],
   "item": [
     {
-      "name": "Auth",
+      "name": "Setup",
       "item": [
         {
-          "name": "Register",
-          "request": {
-            "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "url": { "raw": "{{base_url}}/api/v1/auth/register", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "register"] },
-            "body": { "mode": "raw", "raw": "{\n  \"email\": \"member@tempo.africa\",\n  \"password\": \"Pa55word!\",\n  \"firstName\": \"Ada\",\n  \"lastName\": \"Obi\"\n}" }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "const json = pm.response.json();",
-                  "if (json.data && json.data.accessToken) {",
-                  "  pm.collectionVariables.set('access_token', json.data.accessToken);",
-                  "  pm.collectionVariables.set('refresh_token', json.data.refreshToken);",
-                  "}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Login (member)",
-          "request": {
-            "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "url": { "raw": "{{base_url}}/api/v1/auth/login", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "login"] },
-            "body": { "mode": "raw", "raw": "{\n  \"email\": \"member@tempo.africa\",\n  \"password\": \"Pa55word!\"\n}" }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "const json = pm.response.json();",
-                  "if (json.data && json.data.accessToken) {",
-                  "  pm.collectionVariables.set('access_token', json.data.accessToken);",
-                  "  pm.collectionVariables.set('refresh_token', json.data.refreshToken);",
-                  "}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Login (admin)",
-          "request": {
-            "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "url": { "raw": "{{base_url}}/api/v1/auth/login", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "login"] },
-            "body": { "mode": "raw", "raw": "{\n  \"email\": \"admin@tempo.africa\",\n  \"password\": \"CHANGE_ME\"\n}" }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "const json = pm.response.json();",
-                  "if (json.data && json.data.accessToken) {",
-                  "  pm.collectionVariables.set('admin_token', json.data.accessToken);",
-                  "}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Refresh",
-          "request": {
-            "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "url": { "raw": "{{base_url}}/api/v1/auth/refresh", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "refresh"] },
-            "body": { "mode": "raw", "raw": "{\n  \"refreshToken\": \"{{refresh_token}}\"\n}" }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "const json = pm.response.json();",
-                  "if (json.data && json.data.accessToken) {",
-                  "  pm.collectionVariables.set('access_token', json.data.accessToken);",
-                  "}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Logout",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{access_token}}" }
-            ],
-            "url": { "raw": "{{base_url}}/api/v1/auth/logout", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "logout"] },
-            "body": { "mode": "raw", "raw": "{\n  \"refreshToken\": \"{{refresh_token}}\"\n}" }
-          }
-        }
-      ]
-    },
-    {
-      "name": "Users",
-      "item": [
-        {
-          "name": "Get my profile",
+          "name": "Health",
           "request": {
             "method": "GET",
-            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
-            "url": { "raw": "{{base_url}}/api/v1/users/me", "host": ["{{base_url}}"], "path": ["api", "v1", "users", "me"] }
-          }
-        }
-      ]
-    },
-    {
-      "name": "Spaces",
-      "item": [
-        {
-          "name": "Create space (admin)",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{admin_token}}" }
-            ],
-            "url": { "raw": "{{base_url}}/api/v1/spaces", "host": ["{{base_url}}"], "path": ["api", "v1", "spaces"] },
-            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Accra Central Hub\",\n  \"location\": \"Independence Avenue, Accra\",\n  \"description\": \"Flagship co-working space\",\n  \"openingTime\": \"08:00:00\",\n  \"closingTime\": \"20:00:00\"\n}" }
+            "header": [],
+            "url": "{{base_url}}/health",
+            "auth": {
+              "type": "noauth"
+            }
           },
           "event": [
             {
@@ -159,8 +114,756 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
                   "const json = pm.response.json();",
-                  "if (json.data && json.data.id) { pm.collectionVariables.set('spaceId', json.data.id); }"
+                  "pm.test('Response envelope', () => pm.expect(json.success).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register member",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/auth/register",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{member_email}}\",\n  \"password\": \"{{member_password}}\",\n  \"firstName\": \"Demo\",\n  \"lastName\": \"Member\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 201', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test('Response envelope', () => pm.expect(json.success).to.eql(true));",
+                  "if (json.success) pm.collectionVariables.set('access_token', json.data.accessToken);",
+                  "if (json.success) pm.collectionVariables.set('refresh_token', json.data.refreshToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register waiter",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/auth/register",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{waiter_email}}\",\n  \"password\": \"{{waiter_password}}\",\n  \"firstName\": \"Demo\",\n  \"lastName\": \"Member\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 201', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test('Response envelope', () => pm.expect(json.success).to.eql(true));",
+                  "if (json.success) pm.collectionVariables.set('waiter_token', json.data.accessToken);",
+                  "if (json.success) pm.collectionVariables.set('waiter_refresh', json.data.refreshToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login administrator",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/auth/login",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@tempo.africa\",\n  \"password\": \"{{admin_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Response envelope', () => pm.expect(json.success).to.eql(true));",
+                  "if (json.success) pm.collectionVariables.set('admin_token', json.data.accessToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create space",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/spaces",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Demo workspace\",\n  \"location\": \"UTC\",\n  \"description\": \"Disposable demonstration\",\n  \"openingTime\": \"08:00:00\",\n  \"closingTime\": \"20:00:00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 201', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test('Response envelope', () => pm.expect(json.success).to.eql(true));",
+                  "if (json.success) pm.collectionVariables.set('spaceId', json.data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create resource",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/spaces/{{spaceId}}/resources",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Desk 1\",\n  \"type\": \"DESK\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 201', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test('Response envelope', () => pm.expect(json.success).to.eql(true));",
+                  "if (json.success) pm.collectionVariables.set('resourceId', json.data.id);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Booking and waitlist",
+      "item": [
+        {
+          "name": "Create member booking",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/bookings",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceId\": \"{{resourceId}}\",\n  \"startTime\": \"{{slot_start}}\",\n  \"endTime\": \"{{slot_end}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 201', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test('Response envelope', () => pm.expect(json.success).to.eql(true));",
+                  "if (json.success) pm.collectionVariables.set('bookingId', json.data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reject overlapping booking",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/bookings",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{waiter_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceId\": \"{{resourceId}}\",\n  \"startTime\": \"{{slot_start}}\",\n  \"endTime\": \"{{slot_end}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 409', () => pm.response.to.have.status(409));",
+                  "const json = pm.response.json();",
+                  "pm.test('Response envelope', () => pm.expect(json.success).to.eql(false));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reject cancellation by another user",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{base_url}}/api/v1/bookings/{{bookingId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{waiter_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 403', () => pm.response.to.have.status(403));",
+                  "const json = pm.response.json();",
+                  "pm.test('Response envelope', () => pm.expect(json.success).to.eql(false));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Waiter joins exact slot",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/waitlist",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{waiter_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceId\": \"{{resourceId}}\",\n  \"startTime\": \"{{slot_start}}\",\n  \"endTime\": \"{{slot_end}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 201', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test('Response envelope', () => pm.expect(json.success).to.eql(true));",
+                  "if (json.success) pm.collectionVariables.set('entryId', json.data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Member cancels and promotes waiter",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{base_url}}/api/v1/bookings/{{bookingId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Response envelope', () => pm.expect(json.success).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Hold blocks direct booking",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/bookings",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceId\": \"{{resourceId}}\",\n  \"startTime\": \"{{slot_start}}\",\n  \"endTime\": \"{{slot_end}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 409', () => pm.response.to.have.status(409));",
+                  "const json = pm.response.json();",
+                  "pm.test('Response envelope', () => pm.expect(json.success).to.eql(false));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Waiter claims offer",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{base_url}}/api/v1/waitlist/offers/{{entryId}}/claim",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{waiter_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Response envelope', () => pm.expect(json.success).to.eql(true));",
+                  "if (json.success) pm.collectionVariables.set('claimedBookingId', json.data.id);",
+                  "pm.test('Confirmed', () => pm.expect(json.data.status).to.eql('CONFIRMED'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Availability snapshot",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/v1/spaces/{{spaceId}}/availability?date={{demo_date}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Response envelope', () => pm.expect(json.success).to.eql(true));",
+                  "pm.test('Revision supplied', () => pm.expect(json.data.revision).to.be.a('number'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Waiter cancels claimed booking",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{base_url}}/api/v1/bookings/{{claimedBookingId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{waiter_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Response envelope', () => pm.expect(json.success).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Logout waiter",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/auth/logout",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{waiter_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{waiter_refresh}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Response envelope', () => pm.expect(json.success).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Revoked access token is rejected",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/v1/users/me",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{waiter_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 401', () => pm.response.to.have.status(401));",
+                  "const json = pm.response.json();",
+                  "pm.test('Response envelope', () => pm.expect(json.success).to.eql(false));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Optional reads and authentication",
+      "item": [
+        {
+          "name": "Login member",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/auth/login",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{member_email}}\",\n  \"password\": \"{{member_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Response envelope', () => pm.expect(json.success).to.eql(true));",
+                  "if (json.success) pm.collectionVariables.set('access_token', json.data.accessToken);",
+                  "if (json.success) pm.collectionVariables.set('refresh_token', json.data.refreshToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Refresh member access",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/auth/refresh",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refresh_token}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Response envelope', () => pm.expect(json.success).to.eql(true));",
+                  "if (json.success) pm.collectionVariables.set('access_token', json.data.accessToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "My profile",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/v1/users/me",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Response envelope', () => pm.expect(json.success).to.eql(true));"
                 ]
               }
             }
@@ -170,53 +873,18 @@
           "name": "List spaces",
           "request": {
             "method": "GET",
-            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
-            "url": { "raw": "{{base_url}}/api/v1/spaces?page=0&size=20", "host": ["{{base_url}}"], "path": ["api", "v1", "spaces"], "query": [{ "key": "page", "value": "0" }, { "key": "size", "value": "20" }] }
-          }
-        },
-        {
-          "name": "Get space",
-          "request": {
-            "method": "GET",
-            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
-            "url": { "raw": "{{base_url}}/api/v1/spaces/{{spaceId}}", "host": ["{{base_url}}"], "path": ["api", "v1", "spaces", "{{spaceId}}"] }
-          }
-        },
-        {
-          "name": "Update space (admin)",
-          "request": {
-            "method": "PUT",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{admin_token}}" }
-            ],
-            "url": { "raw": "{{base_url}}/api/v1/spaces/{{spaceId}}", "host": ["{{base_url}}"], "path": ["api", "v1", "spaces", "{{spaceId}}"] },
-            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Accra Central Hub\",\n  \"location\": \"Independence Avenue, Accra\",\n  \"description\": \"Updated description\",\n  \"openingTime\": \"07:00:00\",\n  \"closingTime\": \"21:00:00\"\n}" }
-          }
-        },
-        {
-          "name": "Deactivate space (admin)",
-          "request": {
-            "method": "DELETE",
-            "header": [{ "key": "Authorization", "value": "Bearer {{admin_token}}" }],
-            "url": { "raw": "{{base_url}}/api/v1/spaces/{{spaceId}}", "host": ["{{base_url}}"], "path": ["api", "v1", "spaces", "{{spaceId}}"] }
-          }
-        }
-      ]
-    },
-    {
-      "name": "Resources",
-      "item": [
-        {
-          "name": "Create resource (admin)",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{admin_token}}" }
-            ],
-            "url": { "raw": "{{base_url}}/api/v1/spaces/{{spaceId}}/resources", "host": ["{{base_url}}"], "path": ["api", "v1", "spaces", "{{spaceId}}", "resources"] },
-            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Meeting Room A\",\n  \"type\": \"ROOM\",\n  \"capacity\": 8\n}" }
+            "header": [],
+            "url": "{{base_url}}/api/v1/spaces?page=0&size=20",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
           },
           "event": [
             {
@@ -224,64 +892,30 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
                   "const json = pm.response.json();",
-                  "if (json.data && json.data.id) { pm.collectionVariables.set('resourceId', json.data.id); }"
+                  "pm.test('Response envelope', () => pm.expect(json.success).to.eql(true));"
                 ]
               }
             }
           ]
         },
         {
-          "name": "List resources in space",
+          "name": "Get space",
           "request": {
             "method": "GET",
-            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
-            "url": { "raw": "{{base_url}}/api/v1/spaces/{{spaceId}}/resources?page=0&size=20", "host": ["{{base_url}}"], "path": ["api", "v1", "spaces", "{{spaceId}}", "resources"], "query": [{ "key": "page", "value": "0" }, { "key": "size", "value": "20" }] }
-          }
-        },
-        {
-          "name": "Get resource",
-          "request": {
-            "method": "GET",
-            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
-            "url": { "raw": "{{base_url}}/api/v1/resources/{{resourceId}}", "host": ["{{base_url}}"], "path": ["api", "v1", "resources", "{{resourceId}}"] }
-          }
-        },
-        {
-          "name": "Update resource (admin)",
-          "request": {
-            "method": "PUT",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{admin_token}}" }
-            ],
-            "url": { "raw": "{{base_url}}/api/v1/resources/{{resourceId}}", "host": ["{{base_url}}"], "path": ["api", "v1", "resources", "{{resourceId}}"] },
-            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Meeting Room A\",\n  \"type\": \"ROOM\",\n  \"capacity\": 10\n}" }
-          }
-        },
-        {
-          "name": "Deactivate resource (admin)",
-          "request": {
-            "method": "DELETE",
-            "header": [{ "key": "Authorization", "value": "Bearer {{admin_token}}" }],
-            "url": { "raw": "{{base_url}}/api/v1/resources/{{resourceId}}", "host": ["{{base_url}}"], "path": ["api", "v1", "resources", "{{resourceId}}"] }
-          }
-        }
-      ]
-    },
-    {
-      "name": "Bookings",
-      "item": [
-        {
-          "name": "Create booking",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{access_token}}" }
-            ],
-            "url": { "raw": "{{base_url}}/api/v1/bookings", "host": ["{{base_url}}"], "path": ["api", "v1", "bookings"] },
-            "body": { "mode": "raw", "raw": "{\n  \"resourceId\": \"{{resourceId}}\",\n  \"startTime\": \"2026-12-01T09:00:00Z\",\n  \"endTime\": \"2026-12-01T10:00:00Z\"\n}" }
+            "header": [],
+            "url": "{{base_url}}/api/v1/spaces/{{spaceId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
           },
           "event": [
             {
@@ -289,8 +923,71 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
                   "const json = pm.response.json();",
-                  "if (json.data && json.data.id) { pm.collectionVariables.set('bookingId', json.data.id); }"
+                  "pm.test('Response envelope', () => pm.expect(json.success).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List resources",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/v1/spaces/{{spaceId}}/resources?page=0&size=20",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Response envelope', () => pm.expect(json.success).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get resource",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/v1/resources/{{resourceId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Response envelope', () => pm.expect(json.success).to.eql(true));"
                 ]
               }
             }
@@ -300,62 +997,18 @@
           "name": "My bookings",
           "request": {
             "method": "GET",
-            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
-            "url": { "raw": "{{base_url}}/api/v1/bookings/me?status=CONFIRMED&page=0&size=20", "host": ["{{base_url}}"], "path": ["api", "v1", "bookings", "me"], "query": [{ "key": "status", "value": "CONFIRMED" }, { "key": "page", "value": "0" }, { "key": "size", "value": "20" }] }
-          }
-        },
-        {
-          "name": "Get booking",
-          "request": {
-            "method": "GET",
-            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
-            "url": { "raw": "{{base_url}}/api/v1/bookings/{{bookingId}}", "host": ["{{base_url}}"], "path": ["api", "v1", "bookings", "{{bookingId}}"] }
-          }
-        },
-        {
-          "name": "Cancel booking",
-          "request": {
-            "method": "DELETE",
-            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
-            "url": { "raw": "{{base_url}}/api/v1/bookings/{{bookingId}}", "host": ["{{base_url}}"], "path": ["api", "v1", "bookings", "{{bookingId}}"] }
-          }
-        },
-        {
-          "name": "Space bookings for date (admin)",
-          "request": {
-            "method": "GET",
-            "header": [{ "key": "Authorization", "value": "Bearer {{admin_token}}" }],
-            "url": { "raw": "{{base_url}}/api/v1/spaces/{{spaceId}}/bookings?date=2026-12-01", "host": ["{{base_url}}"], "path": ["api", "v1", "spaces", "{{spaceId}}", "bookings"], "query": [{ "key": "date", "value": "2026-12-01" }] }
-          }
-        }
-      ]
-    },
-    {
-      "name": "Availability",
-      "item": [
-        {
-          "name": "Availability snapshot",
-          "request": {
-            "method": "GET",
-            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
-            "url": { "raw": "{{base_url}}/api/v1/spaces/{{spaceId}}/availability?date=2026-12-01", "host": ["{{base_url}}"], "path": ["api", "v1", "spaces", "{{spaceId}}", "availability"], "query": [{ "key": "date", "value": "2026-12-01" }] }
-          }
-        }
-      ]
-    },
-    {
-      "name": "Waitlist",
-      "item": [
-        {
-          "name": "Join waitlist",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{access_token}}" }
-            ],
-            "url": { "raw": "{{base_url}}/api/v1/waitlist", "host": ["{{base_url}}"], "path": ["api", "v1", "waitlist"] },
-            "body": { "mode": "raw", "raw": "{\n  \"resourceId\": \"{{resourceId}}\",\n  \"startTime\": \"2026-12-01T09:00:00Z\",\n  \"endTime\": \"2026-12-01T10:00:00Z\"\n}" }
+            "header": [],
+            "url": "{{base_url}}/api/v1/bookings/me?page=0&size=20",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
           },
           "event": [
             {
@@ -363,36 +1016,295 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
                   "const json = pm.response.json();",
-                  "if (json.data && json.data.id) { pm.collectionVariables.set('entryId', json.data.id); }"
+                  "pm.test('Response envelope', () => pm.expect(json.success).to.eql(true));"
                 ]
               }
             }
           ]
         },
         {
-          "name": "My waitlist entries",
+          "name": "Get original booking",
           "request": {
             "method": "GET",
-            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
-            "url": { "raw": "{{base_url}}/api/v1/waitlist/mine?page=0&size=20", "host": ["{{base_url}}"], "path": ["api", "v1", "waitlist", "mine"], "query": [{ "key": "page", "value": "0" }, { "key": "size", "value": "20" }] }
-          }
+            "header": [],
+            "url": "{{base_url}}/api/v1/bookings/{{bookingId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Response envelope', () => pm.expect(json.success).to.eql(true));"
+                ]
+              }
+            }
+          ]
         },
         {
-          "name": "Leave or decline waitlist entry",
+          "name": "Space bookings",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/v1/spaces/{{spaceId}}/bookings?date={{demo_date}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Response envelope', () => pm.expect(json.success).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "My waitlist",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/v1/waitlist/mine?page=0&size=20",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Response envelope', () => pm.expect(json.success).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Leave or decline a live entry",
           "request": {
             "method": "DELETE",
-            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
-            "url": { "raw": "{{base_url}}/api/v1/waitlist/{{entryId}}", "host": ["{{base_url}}"], "path": ["api", "v1", "waitlist", "{{entryId}}"] }
-          }
+            "header": [],
+            "url": "{{base_url}}/api/v1/waitlist/{{entryId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "Set entryId to an active entry owned by access_token. The completed demonstration entry is no longer active."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Response envelope', () => pm.expect(json.success).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Optional administration and cleanup",
+      "item": [
+        {
+          "name": "Update space",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/spaces/{{spaceId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Demo workspace\",\n  \"location\": \"UTC\",\n  \"description\": \"Disposable demonstration\",\n  \"openingTime\": \"08:00:00\",\n  \"closingTime\": \"20:00:00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Response envelope', () => pm.expect(json.success).to.eql(true));"
+                ]
+              }
+            }
+          ]
         },
         {
-          "name": "Claim offer",
+          "name": "Update resource",
           "request": {
-            "method": "POST",
-            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
-            "url": { "raw": "{{base_url}}/api/v1/waitlist/offers/{{entryId}}/claim", "host": ["{{base_url}}"], "path": ["api", "v1", "waitlist", "offers", "{{entryId}}", "claim"] }
-          }
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/resources/{{resourceId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Desk 1\",\n  \"type\": \"DESK\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Response envelope', () => pm.expect(json.success).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Deactivate resource",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{base_url}}/api/v1/resources/{{resourceId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Response envelope', () => pm.expect(json.success).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Deactivate space",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{base_url}}/api/v1/spaces/{{spaceId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Response envelope', () => pm.expect(json.success).to.eql(true));"
+                ]
+              }
+            }
+          ]
         }
       ]
     }

@@ -8,10 +8,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.ActiveProfiles;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.utility.DockerImageName;
 
 import java.util.UUID;
+import org.junit.jupiter.api.Tag;
 
 /**
  * Base class for integration tests. PostgreSQL is provided by the Testcontainers
@@ -22,6 +24,8 @@ import java.util.UUID;
  * <p>Subclasses annotated with {@code @SpringBootTest} also get autowired auth
  * helpers for creating users and minting tokens.
  */
+@ActiveProfiles("test")
+@Tag("integration")
 public abstract class AbstractIntegrationTest {
 
     static final GenericContainer<?> REDIS =
@@ -33,8 +37,11 @@ public abstract class AbstractIntegrationTest {
 
     @DynamicPropertySource
     static void redisProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.data.redis.host", REDIS::getHost);
-        registry.add("spring.data.redis.port", () -> REDIS.getMappedPort(6379));
+        registry.add("spring.datasource.url", () -> "jdbc:tc:postgresql:16-alpine:///tempo?TC_DAEMON=true");
+        registry.add("spring.datasource.driver-class-name", () -> "org.testcontainers.jdbc.ContainerDatabaseDriver");
+        registry.add("spring.data.redis.url", () -> "redis://" + REDIS.getHost() + ":" + REDIS.getMappedPort(6379));
+        registry.add("spring.datasource.username", () -> "test");
+        registry.add("spring.datasource.password", () -> "test");
     }
 
     @Autowired(required = false)

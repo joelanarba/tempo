@@ -6,8 +6,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * Real-time implementation of {@link AvailabilityEventPublisher}. Pushes availability
- * changes to the space topic over STOMP. Marked {@code @Primary} so it supersedes the
- * Sprint 3 logging publisher with no change to {@code BookingService}.
+ * changes to the space topic over STOMP.
  */
 @Component
 @Primary
@@ -29,6 +28,12 @@ public class WebSocketAvailabilityPublisher implements AvailabilityEventPublishe
     @Override
     public void publishAvailable(SlotChange slot) {
         send(slot, AvailabilityState.AVAILABLE);
+    }
+
+    @Override
+    public void publishChanged(java.util.UUID spaceId) {
+        messagingTemplate.convertAndSend(String.format(TOPIC_TEMPLATE, spaceId),
+                new AvailabilityMessage(null, null, null, null, AvailabilityState.CHANGED));
     }
 
     private void send(SlotChange slot, AvailabilityState state) {

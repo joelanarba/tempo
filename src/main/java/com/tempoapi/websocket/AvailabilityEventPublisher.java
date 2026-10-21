@@ -2,8 +2,7 @@ package com.tempoapi.websocket;
 
 /**
  * Publishes availability changes to interested clients. The booking service depends
- * on this interface, never on a concrete transport, so the realtime mechanism can be
- * swapped (logging in Sprint 3, WebSocket in Sprint 4) without touching booking logic.
+ * on this interface so transport failures remain separate from booking decisions.
  */
 public interface AvailabilityEventPublisher {
 
@@ -12,4 +11,6 @@ public interface AvailabilityEventPublisher {
 
     /** Signals that a slot has just become available again. */
     void publishAvailable(SlotChange slot);
+
+    void publishChanged(java.util.UUID spaceId);
 }

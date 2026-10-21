@@ -13,6 +13,8 @@ target/
 
 # Environment / secrets
 .env
+.env.*
+!.env.example
 *.env
 !deploy/*.env.example
 
@@ -22,7 +24,3 @@ Thumbs.db
 
 # Logs
 *.log
-
-# Project guidance
-CLAUDE.md
-DEFENSE.md

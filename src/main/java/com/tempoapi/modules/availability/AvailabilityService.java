@@ -13,6 +13,7 @@ import com.tempoapi.repository.SpaceRepository;
 import com.tempoapi.util.TimeRangeUtil;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Isolation;
 
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -42,22 +43,19 @@ public class AvailabilityService {
     }
 
     /**
-     * Returns, for each active resource in the space, the CONFIRMED slots booked on the
-     * given UTC calendar day. Reads are served from Redis when warm; on a miss the result
-     * is computed from the database and cached. Clients load this once and then rely on
-     * WebSocket pushes.
+     * The revision, resource list and occupancy query share one PostgreSQL snapshot.
+     * Cache entries from earlier revisions can expire without explicit key deletion.
      */
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public AvailabilitySnapshotResponse getSnapshot(UUID spaceId, LocalDate date) {
-        Optional<AvailabilitySnapshotResponse> cached = availabilityCache.get(spaceId, date);
-        if (cached.isPresent()) {
-            return cached.get();
-        }
-
         Space space = spaceRepository.findById(spaceId)
                 .orElseThrow(() -> new ResourceNotFoundException("Space not found"));
         if (!space.isActive()) {
             throw new ResourceNotFoundException("Space not found");
+        }
+        Optional<AvailabilitySnapshotResponse> cached = availabilityCache.get(spaceId, date, space.getAvailabilityRevision());
+        if (cached.isPresent()) {
+            return cached.get();
         }
 
         OffsetDateTime windowStart = TimeRangeUtil.startOfDayUtc(date);
@@ -85,7 +83,7 @@ public class AvailabilityService {
         }
 
         AvailabilitySnapshotResponse snapshot =
-                new AvailabilitySnapshotResponse(spaceId, date, resourceAvailabilities);
+                new AvailabilitySnapshotResponse(spaceId, date, space.getAvailabilityRevision(), resourceAvailabilities);
         availabilityCache.put(spaceId, date, snapshot);
         return snapshot;
     }

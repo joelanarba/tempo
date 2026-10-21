@@ -6,6 +6,7 @@ import com.tempoapi.entity.ResourceType;
 import com.tempoapi.entity.Space;
 import com.tempoapi.exception.ResourceNotFoundException;
 import com.tempoapi.exception.ValidationException;
+import com.tempoapi.modules.availability.AvailabilityChanges;
 import com.tempoapi.modules.resources.dto.CreateResourceRequest;
 import com.tempoapi.modules.resources.dto.ResourceResponse;
 import com.tempoapi.modules.resources.dto.UpdateResourceRequest;
@@ -22,10 +23,13 @@ public class ResourceService {
 
     private final ResourceRepository resourceRepository;
     private final SpaceRepository spaceRepository;
+    private final AvailabilityChanges availabilityChanges;
 
-    public ResourceService(ResourceRepository resourceRepository, SpaceRepository spaceRepository) {
+    public ResourceService(ResourceRepository resourceRepository, SpaceRepository spaceRepository,
+                           AvailabilityChanges availabilityChanges) {
         this.resourceRepository = resourceRepository;
         this.spaceRepository = spaceRepository;
+        this.availabilityChanges = availabilityChanges;
     }
 
     /** Creates a resource (desk or room) within a space. */
@@ -34,7 +38,9 @@ public class ResourceService {
         Space space = requireSpace(spaceId);
         Integer capacity = normaliseCapacity(request.type(), request.capacity());
         Resource resource = new Resource(space, request.name(), request.type(), capacity);
-        return ResourceResponse.from(resourceRepository.save(resource));
+        Resource saved = resourceRepository.save(resource);
+        availabilityChanges.changed(spaceId);
+        return ResourceResponse.from(saved);
     }
 
     /** Returns a page of active resources within a space. */
@@ -54,22 +60,34 @@ public class ResourceService {
     /** Updates the mutable fields of a resource. */
     @Transactional
     public ResourceResponse update(UUID id, UpdateResourceRequest request) {
-        Resource resource = findOrThrow(id);
+        Resource resource = lockOrThrow(id);
         resource.setName(request.name());
         resource.setType(request.type());
         resource.setCapacity(normaliseCapacity(request.type(), request.capacity()));
+        availabilityChanges.changed(resource.getSpace().getId());
         return ResourceResponse.from(resource);
     }
 
     /** Soft-deactivates a resource; existing bookings are preserved. */
     @Transactional
     public void deactivate(UUID id) {
-        findOrThrow(id).setActive(false);
+        Resource resource = lockOrThrow(id);
+        resource.setActive(false);
+        availabilityChanges.changed(resource.getSpace().getId());
     }
 
     private Space requireSpace(UUID spaceId) {
-        return spaceRepository.findById(spaceId)
+        Space space = spaceRepository.findById(spaceId)
                 .orElseThrow(() -> new ResourceNotFoundException("Space not found"));
+        if (!space.isActive()) {
+            throw new ResourceNotFoundException("Space not found");
+        }
+        return space;
+    }
+
+    private Resource lockOrThrow(UUID id) {
+        return resourceRepository.findByIdForUpdate(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Resource not found"));
     }
 
     private Resource findOrThrow(UUID id) {

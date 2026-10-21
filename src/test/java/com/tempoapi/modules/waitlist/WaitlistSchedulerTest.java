@@ -28,7 +28,7 @@ class WaitlistSchedulerTest {
         when(bookingRepository.findExpiredHolds(any(OffsetDateTime.class), any()))
                 .thenReturn(List.of(hold));
 
-        new WaitlistScheduler(bookingRepository, waitlistService).sweepExpiredHolds();
+        new WaitlistScheduler(bookingRepository, waitlistService, java.time.Clock.systemUTC()).sweepExpiredHolds();
 
         verify(waitlistService).expireHold(hold.getId());
     }

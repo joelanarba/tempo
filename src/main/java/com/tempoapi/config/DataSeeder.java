@@ -18,11 +18,12 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalTime;
+import java.nio.charset.StandardCharsets;
 
 /**
  * Seeds a development environment with one admin, one space and a handful of
- * resources. Active only under the {@code setup} profile so it never runs in
- * production. The admin password comes from the environment, never the source.
+ * resources. Active only under the explicitly selected {@code setup} profile.
+ * The admin password comes from the environment.
  */
 @Component
 @Profile("setup")
@@ -59,6 +60,9 @@ public class DataSeeder implements CommandLineRunner {
         if (adminPassword == null || adminPassword.isBlank()) {
             log.warn("SEED_ADMIN_PASSWORD is not set; skipping seeding.");
             return;
+        }
+        if (adminPassword.length() < 8 || adminPassword.getBytes(StandardCharsets.UTF_8).length > 72) {
+            throw new IllegalArgumentException("SEED_ADMIN_PASSWORD must contain at least 8 characters and at most 72 UTF-8 bytes");
         }
 
         User admin = new User(ADMIN_EMAIL, passwordEncoder.encode(adminPassword), "Tempo", "Admin", Role.ADMIN);

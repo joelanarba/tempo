@@ -6,11 +6,11 @@ import java.util.UUID;
 
 /**
  * The full availability picture for a space on a date: every active resource and the
- * CONFIRMED slots already booked against it. This read-heavy response is cached in
- * Redis (Sprint 5) keyed by {@code availability:{spaceId}:{date}}.
+ * CONFIRMED or HELD slots, with the database revision used by its Redis cache key.
  */
 public record AvailabilitySnapshotResponse(
         UUID spaceId,
         LocalDate date,
+        long revision,
         List<ResourceAvailability> resources) {
 }

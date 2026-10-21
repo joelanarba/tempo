@@ -1,6 +1,8 @@
 package com.tempoapi.filter;
 
 import com.tempoapi.security.TokenBlocklist;
+import com.tempoapi.security.RestAuthenticationEntryPoint;
+import com.tempoapi.exception.ServiceUnavailableException;
 import com.tempoapi.util.JwtUtil;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
@@ -34,10 +36,13 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
     private final JwtUtil jwtUtil;
     private final TokenBlocklist tokenBlocklist;
+    private final RestAuthenticationEntryPoint authenticationEntryPoint;
 
-    public JwtAuthFilter(JwtUtil jwtUtil, TokenBlocklist tokenBlocklist) {
+    public JwtAuthFilter(JwtUtil jwtUtil, TokenBlocklist tokenBlocklist,
+                         RestAuthenticationEntryPoint authenticationEntryPoint) {
         this.jwtUtil = jwtUtil;
         this.tokenBlocklist = tokenBlocklist;
+        this.authenticationEntryPoint = authenticationEntryPoint;
     }
 
     @Override
@@ -53,8 +58,11 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 if (jwtUtil.isAccessToken(claims) && !tokenBlocklist.isBlocklisted(jwtUtil.extractJti(claims))) {
                     authenticate(request, claims);
                 }
+            } catch (ServiceUnavailableException ex) {
+                authenticationEntryPoint.unavailable(response);
+                return;
             } catch (JwtException | IllegalArgumentException ex) {
-                log.debug("Rejected JWT: {}", ex.getMessage());
+                log.debug("Rejected JWT ({})", ex.getClass().getSimpleName());
             }
         }
         filterChain.doFilter(request, response);

@@ -9,7 +9,9 @@ import com.tempoapi.entity.Space;
 import com.tempoapi.entity.User;
 import com.tempoapi.exception.ResourceNotFoundException;
 import com.tempoapi.exception.ValidationException;
-import com.tempoapi.modules.availability.AvailabilityCache;
+import com.tempoapi.modules.availability.AvailabilityChanges;
+import java.time.Clock;
+import org.mockito.Spy;
 import com.tempoapi.modules.bookings.dto.BookingResponse;
 import com.tempoapi.modules.bookings.dto.CreateBookingRequest;
 import com.tempoapi.modules.waitlist.WaitlistPromoter;
@@ -53,9 +55,9 @@ class BookingServiceTest {
     @Mock
     private UserRepository userRepository;
     @Mock
-    private AvailabilityEventPublisher availabilityEventPublisher;
-    @Mock
-    private AvailabilityCache availabilityCache;
+    private AvailabilityChanges availabilityChanges;
+    @Spy
+    private Clock clock = Clock.systemUTC();
     @Mock
     private WaitlistPromoter waitlistPromoter;
     @InjectMocks
@@ -145,7 +147,7 @@ class BookingServiceTest {
 
         assertThat(response.status()).isEqualTo(BookingStatus.CONFIRMED);
         assertThat(response.resourceId()).isEqualTo(resource.getId());
-        verify(availabilityEventPublisher).publishBooked(any(SlotChange.class));
+        verify(availabilityChanges).booked(any(SlotChange.class));
     }
 
     @Test
@@ -161,11 +163,25 @@ class BookingServiceTest {
         Booking booking = new Booking(resource, user, space, TimeRangeUtil.toRange(start, end), BookingStatus.CONFIRMED);
         booking.setId(UUID.randomUUID());
 
-        when(bookingRepository.findById(booking.getId())).thenReturn(Optional.of(booking));
+        when(bookingRepository.findResourceIdById(booking.getId())).thenReturn(Optional.of(resource.getId()));
+        when(resourceRepository.findByIdForUpdate(resource.getId())).thenReturn(Optional.of(resource));
+        when(bookingRepository.findByIdForUpdate(booking.getId())).thenReturn(Optional.of(booking));
 
         bookingService.cancelBooking(userId, booking.getId());
 
         assertThat(booking.getStatus()).isEqualTo(BookingStatus.CANCELLED);
         verify(waitlistPromoter).promoteForReleasedSlot(any(SlotChange.class));
+    }
+
+    @Test
+    void rejectsOffsetRepresentationOutsideUtcOpeningHours() {
+        Space space = activeSpace();
+        Resource resource = activeResource(space);
+        when(resourceRepository.findByIdForUpdate(resource.getId())).thenReturn(Optional.of(resource));
+        OffsetDateTime local = tomorrowAt(18).withOffsetSameLocal(java.time.ZoneOffset.ofHours(-8));
+        assertThatThrownBy(() -> bookingService.createBooking(UUID.randomUUID(),
+                new CreateBookingRequest(resource.getId(), local, local.plusHours(1))))
+                .isInstanceOf(ValidationException.class);
+        org.mockito.Mockito.verify(bookingRepository, org.mockito.Mockito.never()).saveAndFlush(any());
     }
 }

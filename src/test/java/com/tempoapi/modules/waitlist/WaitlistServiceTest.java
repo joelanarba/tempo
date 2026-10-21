@@ -8,7 +8,8 @@ import com.tempoapi.entity.User;
 import com.tempoapi.entity.WaitlistEntry;
 import com.tempoapi.entity.WaitlistStatus;
 import com.tempoapi.exception.SlotAvailableException;
-import com.tempoapi.modules.availability.AvailabilityCache;
+import com.tempoapi.modules.availability.AvailabilityChanges;
+import java.time.Clock;
 import com.tempoapi.modules.waitlist.dto.JoinWaitlistRequest;
 import com.tempoapi.modules.waitlist.dto.WaitlistEntryResponse;
 import com.tempoapi.repository.BookingRepository;
@@ -44,15 +45,12 @@ class WaitlistServiceTest {
     @Mock private BookingRepository bookingRepository;
     @Mock private ResourceRepository resourceRepository;
     @Mock private UserRepository userRepository;
-    @Mock private AvailabilityCache availabilityCache;
-    @Mock private AvailabilityEventPublisher availabilityEventPublisher;
+    @Mock private AvailabilityChanges availabilityChanges;
     @Mock private WaitlistEventPublisher waitlistEventPublisher;
-    @Mock private WaitlistPromoter waitlistPromoter;
 
     private WaitlistService service() {
         return new WaitlistService(waitlistEntryRepository, bookingRepository, resourceRepository,
-                userRepository, availabilityCache, availabilityEventPublisher, waitlistEventPublisher, 120,
-                waitlistPromoter);
+                userRepository, availabilityChanges, waitlistEventPublisher, 120, Clock.systemUTC());
     }
 
     private OffsetDateTime at(int hour) {
@@ -75,7 +73,7 @@ class WaitlistServiceTest {
     void rejectsJoiningWhenSlotIsActuallyFree() {
         Space space = space();
         Resource resource = resource(space);
-        when(resourceRepository.findById(resource.getId())).thenReturn(Optional.of(resource));
+        when(resourceRepository.findByIdForUpdate(resource.getId())).thenReturn(Optional.of(resource));
         when(bookingRepository.findOverlapping(eq(resource.getId()), any(), any())).thenReturn(List.of());
 
         JoinWaitlistRequest request = new JoinWaitlistRequest(resource.getId(), at(9), at(10));
@@ -92,13 +90,13 @@ class WaitlistServiceTest {
         User user = new User("e@tempo.africa", "h", "F", "L", Role.MEMBER);
         user.setId(userId);
 
-        when(resourceRepository.findById(resource.getId())).thenReturn(Optional.of(resource));
+        when(resourceRepository.findByIdForUpdate(resource.getId())).thenReturn(Optional.of(resource));
         when(bookingRepository.findOverlapping(eq(resource.getId()), any(), any()))
-                .thenReturn(List.of(new com.tempoapi.entity.Booking()));
+                .thenReturn(List.of(new com.tempoapi.entity.Booking(resource, new User(), space, TimeRangeUtil.toRange(at(9), at(10)), com.tempoapi.entity.BookingStatus.CONFIRMED)));
         when(waitlistEntryRepository.existsActiveEntry(any(), any(), any(), any())).thenReturn(false);
         when(userRepository.getReferenceById(userId)).thenReturn(user);
-        when(waitlistEntryRepository.save(any(WaitlistEntry.class))).thenAnswer(inv -> inv.getArgument(0));
-        when(waitlistEntryRepository.findByResourceIdAndStatusOrderByCreatedAtAsc(resource.getId(), WaitlistStatus.WAITING))
+        when(waitlistEntryRepository.saveAndFlush(any(WaitlistEntry.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(waitlistEntryRepository.findWaitingForSlot(eq(resource.getId()), any(), any()))
                 .thenReturn(List.of());
 
         WaitlistEntryResponse response = service().join(userId, new JoinWaitlistRequest(resource.getId(), at(9), at(10)));

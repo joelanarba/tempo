@@ -1,0 +1,1 @@
+ALTER TABLE spaces ADD COLUMN availability_revision BIGINT NOT NULL DEFAULT 0;

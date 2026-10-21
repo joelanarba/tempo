@@ -10,12 +10,11 @@ import org.springframework.stereotype.Component;
 
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.time.Clock;
 import java.util.List;
 
 /**
- * Periodically expires holds whose offer window has lapsed and cascades each freed slot to the
- * next waiter. Single-instance: with multiple app nodes, wrap the sweep in a distributed lock
- * (for example ShedLock) so only one node promotes.
+ * Expires each hold in a separate transaction. A failed expiry remains eligible for the next sweep.
  */
 @Component
 public class WaitlistScheduler {
@@ -25,21 +24,23 @@ public class WaitlistScheduler {
 
     private final BookingRepository bookingRepository;
     private final WaitlistService waitlistService;
+    private final Clock clock;
 
-    public WaitlistScheduler(BookingRepository bookingRepository, WaitlistService waitlistService) {
+    public WaitlistScheduler(BookingRepository bookingRepository, WaitlistService waitlistService, Clock clock) {
         this.bookingRepository = bookingRepository;
         this.waitlistService = waitlistService;
+        this.clock = clock;
     }
 
     @Scheduled(fixedDelayString = "${app.waitlist.sweep-ms:10000}")
     public void sweepExpiredHolds() {
         List<Booking> expired = bookingRepository.findExpiredHolds(
-                OffsetDateTime.now(ZoneOffset.UTC), PageRequest.of(0, BATCH));
+                OffsetDateTime.now(clock), PageRequest.of(0, BATCH));
         for (Booking hold : expired) {
             try {
                 waitlistService.expireHold(hold.getId());
             } catch (RuntimeException ex) {
-                log.warn("Failed to expire hold {}: {}", hold.getId(), ex.getMessage());
+                log.warn("Failed to expire hold {} ({})", hold.getId(), ex.getClass().getSimpleName());
             }
         }
     }

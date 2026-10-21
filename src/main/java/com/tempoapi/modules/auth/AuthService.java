@@ -15,6 +15,8 @@ import com.tempoapi.repository.RefreshTokenRepository;
 import com.tempoapi.repository.UserRepository;
 import com.tempoapi.security.TokenBlocklist;
 import com.tempoapi.util.JwtUtil;
+import com.tempoapi.util.TokenHash;
+import java.nio.charset.StandardCharsets;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -49,6 +51,9 @@ public class AuthService {
     /** Registers a new MEMBER, storing only the BCrypt hash of the password, and issues tokens. */
     @Transactional
     public AuthResponse register(RegisterRequest request) {
+        if (request.password().getBytes(StandardCharsets.UTF_8).length > 72) {
+            throw new com.tempoapi.exception.ValidationException("Password must not exceed 72 UTF-8 bytes");
+        }
         if (userRepository.existsByEmail(request.email())) {
             throw new DuplicateResourceException("Email is already registered");
         }
@@ -65,6 +70,9 @@ public class AuthService {
     /** Authenticates by email and password and issues a fresh token pair. */
     @Transactional
     public AuthResponse login(LoginRequest request) {
+        if (request.password().getBytes(StandardCharsets.UTF_8).length > 72) {
+            throw new UnauthorizedException("Invalid email or password");
+        }
         User user = userRepository.findByEmail(request.email())
                 .orElseThrow(() -> new UnauthorizedException("Invalid email or password"));
         if (!user.isActive()) {
@@ -76,16 +84,16 @@ public class AuthService {
         return issueTokens(user);
     }
 
-    /** Issues a new access token from a valid, stored, non-revoked refresh token (sliding window). */
+    /** Refresh credentials retain their original expiry and are reusable until revoked. */
     @Transactional(readOnly = true)
     public AccessTokenResponse refresh(RefreshRequest request) {
         Claims claims = parseRefreshToken(request.refreshToken());
-        RefreshToken stored = refreshTokenRepository.findByToken(request.refreshToken())
+        RefreshToken stored = refreshTokenRepository.findByTokenHash(TokenHash.of(request.refreshToken()))
                 .orElseThrow(() -> new UnauthorizedException("Refresh token is not recognised"));
         if (stored.isRevoked()) {
             throw new UnauthorizedException("Refresh token has been revoked");
         }
-        if (stored.getExpiresAt().isBefore(Instant.now())) {
+        if (!Instant.now().isBefore(stored.getExpiresAt())) {
             throw new UnauthorizedException("Refresh token has expired");
         }
         User user = stored.getUser();
@@ -103,18 +111,23 @@ public class AuthService {
     /** Revokes the refresh token and blocklists the presented access token until it expires. */
     @Transactional
     public void logout(String accessToken, LogoutRequest request) {
-        refreshTokenRepository.findByToken(request.refreshToken()).ifPresent(token -> {
-            token.setRevoked(true);
-            refreshTokenRepository.save(token);
-        });
-        if (accessToken != null) {
-            try {
-                Claims claims = jwtUtil.parse(accessToken);
-                tokenBlocklist.blocklist(jwtUtil.extractJti(claims), jwtUtil.extractExpiration(claims));
-            } catch (JwtException | IllegalArgumentException ex) {
-                // Token already invalid or expired; nothing to blocklist.
-            }
+        Claims claims;
+        try {
+            claims = jwtUtil.parse(accessToken);
+        } catch (JwtException | IllegalArgumentException ex) {
+            throw new UnauthorizedException("A valid access token is required");
         }
+        if (!jwtUtil.isAccessToken(claims)) {
+            throw new UnauthorizedException("A valid access token is required");
+        }
+        RefreshToken stored = refreshTokenRepository.findByTokenHash(TokenHash.of(request.refreshToken()))
+                .orElseThrow(() -> new UnauthorizedException("Refresh token is not recognised"));
+        if (!stored.getUser().getId().equals(jwtUtil.extractUserId(claims))) {
+            throw new com.tempoapi.exception.ForbiddenException("Refresh token does not belong to this account");
+        }
+        tokenBlocklist.blocklist(jwtUtil.extractJti(claims), jwtUtil.extractExpiration(claims));
+        stored.setRevoked(true);
+        refreshTokenRepository.save(stored);
     }
 
     private Claims parseRefreshToken(String token) {

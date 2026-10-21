@@ -32,7 +32,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * <p>The BookingService's findOverlapping query counts HELD bookings as occupied, so a third
  * member cannot steal a held slot from a waiter who has not yet claimed or declined.
  *
- * <p>Testcontainers (Codespaces only — Docker unavailable locally).
+ * <p>Testcontainers (requires a working Docker engine).
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ActiveProfiles("test")
@@ -67,7 +67,7 @@ class WaitlistHoldBlocksDirectBookingTest extends AbstractIntegrationTest {
                 a.getId(), new CreateBookingRequest(resource.getId(), at(9), at(10)));
         waitlistService.join(b.getId(), new JoinWaitlistRequest(resource.getId(), at(9), at(10)));
 
-        // A cancels — B is now OFFERED and a HELD booking exists for the slot.
+        // A cancels, B is now OFFERED and a HELD booking exists for the slot.
         bookingService.cancelBooking(a.getId(), booking.id());
 
         // D attempts a direct booking of the same slot while B's hold is live.

@@ -48,7 +48,6 @@ import static org.assertj.core.api.Assertions.assertThat;
  * destination when A cancels a booking and the waitlist promotion fires.
  *
  * <p>Requires a running broker (RANDOM_PORT SpringBootTest) and Testcontainers Postgres + Redis.
- * Runs in Codespaces, not locally (Docker unavailable locally).
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
@@ -132,7 +131,7 @@ class WaitlistWebSocketTest extends AbstractIntegrationTest {
                 a.getId(), new CreateBookingRequest(resource.getId(), at(9), at(10)));
         waitlistService.join(b.getId(), new JoinWaitlistRequest(resource.getId(), at(9), at(10)));
 
-        // A cancels — this triggers waitlist promotion, which should push OFFERED to B.
+        // A cancels, this triggers waitlist promotion, which should push OFFERED to B.
         bookingService.cancelBooking(a.getId(), booking.id());
 
         WaitlistMessage message = queue.poll(5, TimeUnit.SECONDS);

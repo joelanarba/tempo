@@ -10,6 +10,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import org.hibernate.annotations.CreationTimestamp;
+import com.tempoapi.util.TokenHash;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -26,8 +27,8 @@ public class RefreshToken {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    @Column(nullable = false, unique = true)
-    private String token;
+    @Column(name = "token_hash", nullable = false, unique = true, length = 64)
+    private String tokenHash;
 
     @Column(name = "expires_at", nullable = false)
     private Instant expiresAt;
@@ -44,7 +45,7 @@ public class RefreshToken {
 
     public RefreshToken(User user, String token, Instant expiresAt) {
         this.user = user;
-        this.token = token;
+        this.tokenHash = TokenHash.of(token);
         this.expiresAt = expiresAt;
         this.revoked = false;
     }
@@ -65,12 +66,8 @@ public class RefreshToken {
         this.user = user;
     }
 
-    public String getToken() {
-        return token;
-    }
-
-    public void setToken(String token) {
-        this.token = token;
+    public String getTokenHash() {
+        return tokenHash;
     }
 
     public Instant getExpiresAt() {

@@ -1,136 +1,69 @@
-# Testing the Realtime Layer
+# WebSocket demonstration
 
-A standard Postman collection cannot exercise STOMP-over-WebSocket, so test the realtime
-layer with a tiny browser page (below) or any STOMP client. The flow is:
+Tempo exposes SockJS at `/ws`. Authenticate over REST and send the access token in the STOMP CONNECT frame. The only permitted subscriptions are `/topic/spaces/{spaceId}/availability` and `/user/queue/waitlist`. All client SEND frames are rejected. Never subscribe to a physical `/queue` destination.
 
-1. Authenticate over REST to get an access token.
-2. Open a STOMP connection to `/ws`, sending the token on the CONNECT frame.
-3. Subscribe to `/topic/spaces/{spaceId}/availability`.
-4. Create or cancel a booking over REST and watch the message arrive live.
+Browser connections must originate from an entry in `WEBSOCKET_ALLOWED_ORIGINS`. The local template allows `http://localhost:8081`. Save the page below outside the public repository, serve its directory with `python -m http.server 8081 --bind 127.0.0.1`, and open `http://localhost:8081/ws-test.html`. A `file://` page does not supply the allowed origin. Keep tokens out of recordings, URLs and saved HTML.
 
-## Option A — Browser page (SockJS + STOMP)
-
-Save this as `ws-test.html`, edit the three constants at the top, and open it in a browser
-with the server running.
+The page uses third-party client libraries from a CDN. It keeps the token in memory, disables STOMP debug logging and displays message bodies without rendering HTML. REST calls remain in Postman; cross-origin browser REST access is not configured.
 
 ```html
 <!doctype html>
-<html>
-  <head>
-    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@stomp/stompjs@7/bundles/stomp.umd.min.js"></script>
-  </head>
-  <body>
-    <h3>Tempo availability feed</h3>
-    <pre id="log"></pre>
-    <script>
-      const BASE = "http://localhost:8080";
-      const TOKEN = "PASTE_ACCESS_TOKEN_HERE";
-      const SPACE_ID = "PASTE_SPACE_ID_HERE";
-
-      const log = (m) => (document.getElementById("log").textContent += m + "\n");
-
-      const client = new StompJs.Client({
-        webSocketFactory: () => new SockJS(BASE + "/ws"),
-        connectHeaders: { Authorization: "Bearer " + TOKEN },
-        onConnect: () => {
-          log("connected");
-          client.subscribe("/topic/spaces/" + SPACE_ID + "/availability", (msg) => {
-            log("update: " + msg.body);
-          });
-        },
-        onStompError: (frame) => log("error: " + frame.headers["message"]),
-      });
-      client.activate();
-    </script>
-  </body>
+<html lang="en">
+<meta charset="utf-8">
+<title>Tempo event viewer</title>
+<script src="https://cdn.jsdelivr.net/npm/sockjs-client@1.6.1/dist/sockjs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@stomp/stompjs@7.0.0/bundles/stomp.umd.min.js"></script>
+<label>Space ID <input id="space"></label>
+<label>Access token <input id="token" type="password" autocomplete="off"></label>
+<button id="connect">Connect</button>
+<button id="disconnect">Disconnect</button>
+<pre id="log"></pre>
+<script>
+  const log = text => document.getElementById('log').append(document.createTextNode(text + '\n'));
+  let client;
+  document.getElementById('connect').onclick = () => {
+    if (client) return;
+    const token = document.getElementById('token').value.trim();
+    const space = document.getElementById('space').value.trim();
+    if (!token || !/^[0-9a-f-]{36}$/i.test(space)) return log('Enter a token and space UUID.');
+    client = new StompJs.Client({
+      webSocketFactory: () => new SockJS('http://localhost:8080/ws'),
+      connectHeaders: { Authorization: 'Bearer ' + token },
+      reconnectDelay: 0,
+      debug: () => {},
+      onConnect: () => {
+        document.getElementById('token').value = '';
+        log('Connected. Registering subscriptions.');
+        client.subscribe('/topic/spaces/' + space + '/availability', m => log('availability: ' + m.body));
+        client.subscribe('/user/queue/waitlist', m => log('private: ' + m.body));
+        log('Fetch an initial REST snapshot. Fetch again after events and on reconnect.');
+      },
+      onStompError: () => log('STOMP rejected the connection or command.'),
+      onWebSocketClose: () => log('Connection closed. Disconnect, then reconnect with a valid token.')
+    });
+    client.activate();
+  };
+  document.getElementById('disconnect').onclick = async () => {
+    if (client) await client.deactivate();
+    client = undefined;
+    log('Disconnected.');
+  };
+</script>
 </html>
 ```
 
-With the page connected, create a booking via REST (Postman or curl). A `BOOKED` message
-appears immediately; cancelling it produces an `AVAILABLE` message.
+## Interpreting events
 
-Message shape:
+Public messages contain `resourceId`, `resourceName`, `startTime`, `endTime` and `state`. `BOOKED` means a booking or hold occupies the interval. `AVAILABLE` means the released interval has no replacement occupancy. `CHANGED` means space/resource metadata changed and has null interval fields. Treat every state as an invalidation signal and fetch a fresh REST snapshot.
 
-```json
-{
-  "resourceId": "…",
-  "resourceName": "Desk 1",
-  "startTime": "2026-06-20T09:00:00Z",
-  "endTime": "2026-06-20T10:00:00Z",
-  "state": "BOOKED"
-}
-```
+Private messages contain `entryId`, `resourceId`, `resourceName`, `spaceId`, `startTime`, `endTime`, `expiresAt` and `state`. `OFFERED` carries the actual deadline. `GRANTED` follows a successful claim. An offer expires no later than the slot start. The expiry sweep marks it expired and attempts the next eligible queue entry; it sends no expiry message to the former recipient. Query `/api/v1/waitlist/mine` to recover current state.
 
-## Option B — wscat (raw frames)
+## Registration and reconciliation
 
-`wscat` speaks raw WebSocket, so you must type STOMP frames yourself. Connect to the raw
-SockJS websocket transport and send a CONNECT frame (`^@` is a literal NUL byte, Ctrl-@):
+The simple broker does not implement STOMP subscription receipts. A CONNECT response alone does not prove that a later SUBSCRIBE is registered. Complete subscriptions before triggering mutations. Automated transport tests wait until the broker reports subscription registration before publishing.
 
-```
-wscat -c ws://localhost:8080/ws/websocket
-> CONNECT
-> Authorization:Bearer PASTE_TOKEN
-> accept-version:1.2
->
-> ^@
-> SUBSCRIBE
-> id:sub-0
-> destination:/topic/spaces/PASTE_SPACE_ID/availability
->
-> ^@
-```
+Fetch a snapshot after subscribing, on every event, after reconnect and periodically while showing availability. Compare the snapshot's `revision` and discard a response older than one already applied. This handles delayed HTTP responses and repairs missed messages. There is no durable event cursor, replay or lossless subscription handshake. Events are best-effort hints from one application instance.
 
-## Subscribing to waitlist offer notifications
+## Security checks
 
-When a slot becomes available and a member is next in the queue, the server sends a private
-offer message directly to that member over a user-scoped destination. To receive it,
-subscribe to `/user/queue/waitlist` after connecting.
-
-Add this subscription inside `onConnect` in the browser page:
-
-```javascript
-client.subscribe("/user/queue/waitlist", (msg) => {
-  log("waitlist offer: " + msg.body);
-});
-```
-
-Or with wscat, after the CONNECT handshake:
-
-```
-> SUBSCRIBE
-> id:sub-1
-> destination:/user/queue/waitlist
->
-> ^@
-```
-
-This destination is user-scoped: each connected member receives only offers addressed to
-them. Other members' offers do not arrive here.
-
-Sample offer message (state `OFFERED`):
-
-```json
-{
-  "entryId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
-  "resourceId": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
-  "resourceName": "Desk 3",
-  "startTime": "2026-12-01T09:00:00Z",
-  "endTime": "2026-12-01T10:00:00Z",
-  "expiresAt": "2026-12-01T09:02:00Z",
-  "state": "OFFERED"
-}
-```
-
-When the member calls `POST /api/v1/waitlist/offers/{entryId}/claim` and the claim succeeds,
-a follow-up message with `state: "GRANTED"` arrives on the same destination.
-
-If the offer expires before the member claims it, the server transitions the hold to
-`EXPIRED` and cascades to the next waiter. The original recipient receives no further
-message on this destination for that entry; they will see the entry in `EXPIRED` status if
-they call `GET /api/v1/waitlist/mine`.
-
-## Rejection check
-
-Connecting without a valid `Authorization` header on the CONNECT frame is rejected before
-the session is established — the browser page logs an error and never receives messages.
+Try connecting without a token, with a refresh token, or from an untrusted browser origin. Try subscribing to `/queue/waitlist` and sending a client message to an availability topic. Each must be rejected. A revoked or expired session must stop receiving messages even if it sends no further commands. Reconnect with a valid access token after expiry. Never paste real tokens into shared terminals or issue reports.

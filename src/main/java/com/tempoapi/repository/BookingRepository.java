@@ -23,9 +23,12 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
 
     long countByResourceIdAndStatus(UUID resourceId, BookingStatus status);
 
+    @Query("SELECT b.resource.id FROM Booking b WHERE b.id = :id")
+    Optional<UUID> findResourceIdById(@Param("id") UUID id);
+
     /**
-     * Returns all bookings in a space that currently occupy the window — CONFIRMED bookings
-     * and live HELD holds — ordered by resource then start time. Backs the availability
+     * Returns all bookings in a space that currently occupy the window, CONFIRMED bookings
+     * and live HELD holds, ordered by resource then start time. Backs the availability
      * snapshot, so a held slot reads as occupied.
      */
     @Query(value = "SELECT b.* FROM bookings b "
@@ -60,7 +63,7 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
 
     /** Holds whose expiry has passed, oldest first; drives the scheduled sweep. */
     @Query(value = "SELECT b.* FROM bookings b "
-            + "WHERE b.status = 'HELD' AND b.hold_expires_at < :now "
+            + "WHERE b.status = 'HELD' AND b.hold_expires_at <= :now "
             + "ORDER BY b.hold_expires_at ASC",
             nativeQuery = true)
     List<Booking> findExpiredHolds(@Param("now") OffsetDateTime now, Pageable pageable);

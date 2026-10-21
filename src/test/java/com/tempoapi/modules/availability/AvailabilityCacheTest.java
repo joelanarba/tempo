@@ -62,7 +62,6 @@ class AvailabilityCacheTest extends AbstractIntegrationTest {
         userId = user.getId();
         date = LocalDate.now().plusDays(1);
         // Ensure a clean cache slate for this space/date.
-        availabilityCache.evict(spaceId, date);
     }
 
     private OffsetDateTime at(int hour) {

@@ -39,6 +39,9 @@ public class Space {
     @Column(name = "is_active", nullable = false)
     private boolean active = true;
 
+    @Column(name = "availability_revision", nullable = false, insertable = false, updatable = false)
+    private long availabilityRevision;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -117,6 +120,10 @@ public class Space {
 
     public Instant getCreatedAt() {
         return createdAt;
+    }
+
+    public long getAvailabilityRevision() {
+        return availabilityRevision;
     }
 
     public Instant getUpdatedAt() {
